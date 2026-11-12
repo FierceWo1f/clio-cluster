@@ -29,7 +29,7 @@
     </div>
     <div class="actions">
       <button id="btnRecord" class="btn ghost" disabled title="Grabar todos los datos a un archivo CSV">● Grabar</button>
-      <button id="btnInstall" class="btn ghost" hidden>⬇ Instalar en la PC</button>
+      <button id="btnInstall" class="btn ghost" hidden>⬇ Instalar app</button>
       <button id="btnConnect" class="btn primary">Conectar</button>
     </div>
   </header>
@@ -241,6 +241,13 @@
           <li>Windows → Configuración → Bluetooth y dispositivos → <b>Agregar dispositivo</b> → Bluetooth.</li>
           <li>Elige <b>OBDII</b> (o "OBD", "V-LINK"). Si pide PIN, usa <b>1234</b> o <b>0000</b>.</li>
           <li>Windows crea un puerto COM. Aquí elige <b>"Conexión serie estándar por vínculo Bluetooth (COMx)"</b>. Si hay dos, prueba con el de número menor.</li>
+        </ol>
+      </details>
+      <details class="help">
+        <summary>¿Y en un teléfono Android?</summary>
+        <ol>
+          <li>Ajustes del teléfono → Bluetooth → empareja <b>OBDII</b> (PIN 1234 o 0000).</li>
+          <li>Usa <b>Google Chrome</b> actualizado. Aquí elige "Bluetooth clásico / USB" y selecciona el OBDII en la lista.</li>
         </ol>
       </details>
       <div class="row end">

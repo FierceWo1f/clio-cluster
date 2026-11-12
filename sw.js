@@ -1,7 +1,7 @@
 // Service worker: permite que la app instalada funcione sin servidor ni internet.
 // Estrategia: red primero (para recibir actualizaciones), caché si no hay red.
 
-const CACHE = 'clio-cluster-v4';
+const CACHE = 'clio-cluster-v5';
 const ASSETS = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest',
   'js/app.js', 'js/elm327.js', 'js/transport.js', 'js/simulator.js',
