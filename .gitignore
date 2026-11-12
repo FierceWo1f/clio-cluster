@@ -1,0 +1,7 @@
+# Entorno de Python del emulador (se reinstala solo con emulador.bat)
+emulador/.venv/
+# Registros del emulador
+elm.log*
+emulador/elm.log*
+__pycache__/
+*.csv
