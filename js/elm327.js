@@ -23,6 +23,24 @@ const ERROR_PATTERNS = [
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
+/**
+ * Formas de iniciar la comunicación con la ECU, en orden de prueba.
+ * Muchas ECU Renault de la época (Sagem S2000 / Siemens Sirius 32, línea K) solo contestan
+ * si se les habla "directo" (dirección física 10 = motor) en lugar de con la dirección
+ * genérica OBD (33), por eso se incluyen los perfiles con ATSH 81 10 F1.
+ */
+export const STRATEGIES = [
+  { id: 'auto', name: 'Automático', cmds: ['ATSP0'] },
+  { id: 'renault-kwp-fast', name: 'Renault KWP2000 directo a motor (rápido)', cmds: ['ATSP5', 'ATSH8110F1', 'ATWM8110F13E', 'ATFI'] },
+  { id: 'kwp-fast', name: 'KWP2000 genérico (rápido)', cmds: ['ATSP5', 'ATFI'] },
+  { id: 'renault-kwp-slow', name: 'Renault KWP2000 directo a motor (lento)', cmds: ['ATSP4', 'ATIIA10', 'ATSH8110F1', 'ATWM8110F13E', 'ATSI'] },
+  { id: 'kwp-slow', name: 'KWP2000 genérico (lento, 5 baud)', cmds: ['ATSP4', 'ATSI'] },
+  { id: 'iso9141', name: 'ISO 9141-2', cmds: ['ATSP3', 'ATSI'] },
+];
+
+// PIDs que se prueban uno por uno si la ECU no informa cuáles soporta.
+const COMMON_PIDS = ['01', '03', '04', '05', '06', '07', '0B', '0C', '0D', '0E', '0F', '10', '11', '13', '14', '15', '1C', '2F', '33', '42'];
+
 export class ElmError extends Error {}
 
 export class ELM327 {
@@ -95,34 +113,99 @@ export class ELM327 {
     return p;
   }
 
-  async init(log = () => {}) {
+  /** Configuración base del adaptador (se repite al cambiar de estrategia). */
+  async _baseSetup() {
+    for (const c of ['ATE0', 'ATL0', 'ATS0', 'ATH0']) await this.send(c);
+    await this.send(this.fastMode ? 'ATAT2' : 'ATAT1');
+  }
+
+  /**
+   * Inicializa el adaptador y busca la forma de hablar con la ECU.
+   * Prueba varias estrategias (ver STRATEGIES) hasta que una responda a 0100
+   * con datos válidos. `preferred` = id de la estrategia que funcionó la vez anterior.
+   */
+  async init(log = () => {}, preferred = null) {
     log('Reiniciando ELM327 (ATZ)…');
     let r = await this.send('ATZ', { timeout: 5000 }).catch(() => '');
     await delay(300);
     if (!r) r = await this.send('ATZ', { timeout: 5000 });
-    for (const c of ['ATE0', 'ATL0', 'ATS0', 'ATH0']) await this.send(c);
     this.version = (await this.send('ATI')).trim();
     log(`Adaptador: ${this.version}`);
-    await this.send(this.fastMode ? 'ATAT2' : 'ATAT1');
-    await this.send('ATSP0');
 
-    log('Buscando protocolo del vehículo (puede tardar hasta 15 s)…');
-    r = await this.send('0100', { timeout: 20000 });
-    if (isError(r)) {
-      throw new ElmError(`La ECU no responde: ${r}. Verifica que el contacto esté en ON (o el motor encendido).`);
+    const order = [...STRATEGIES].sort((a, b) => (b.id === preferred) - (a.id === preferred));
+    const attempts = [];
+    for (const st of order) {
+      await this.send('ATPC').catch(() => {}); // cerrar protocolo anterior
+      await this.send('ATD').catch(() => {});  // valores por defecto (borra encabezados)
+      await this._baseSetup();
+      log(`Probando: ${st.name}…`);
+      for (const c of st.cmds) await this.send(c, { timeout: 8000 }).catch(() => {});
+      let resp = '';
+      try { resp = await this.send('0100', { timeout: 20000 }); }
+      catch (e) { resp = e.message; }
+      const bytes = isError(resp) ? null : extractPid(resp, '41', '00');
+      attempts.push(`${st.name}: ${resp.replace(/\n/g, ' | ') || '(vacío)'}`);
+      if (bytes && bytes.length >= 4) {
+        this.strategy = st;
+        log(`✔ La ECU respondió con: ${st.name}`);
+        const dpn = (await this.send('ATDPN')).trim().replace(/^A/, '');
+        this.protocol = dpn;
+        this.protocolName = PROTOCOLS[dpn] || (await this.send('ATDP')).trim();
+        this.isCan = ['6', '7', '8', '9', 'A'].includes(dpn);
+        log(`Protocolo: ${this.protocolName}`);
+        log('Leyendo PIDs soportados por la ECU…');
+        await this.scanSupported(resp, log);
+        log(`${this.supported.size} PIDs soportados.`);
+        return;
+      }
+      log(`  sin respuesta válida: ${resp.replace(/\n/g, ' | ') || '(vacío)'}`);
     }
-    const dpn = (await this.send('ATDPN')).trim().replace(/^A/, '');
-    this.protocol = dpn;
-    this.protocolName = PROTOCOLS[dpn] || (await this.send('ATDP')).trim();
-    this.isCan = ['6', '7', '8', '9', 'A'].includes(dpn);
-    log(`Protocolo: ${this.protocolName}`);
-
-    log('Leyendo PIDs soportados por la ECU…');
-    await this.scanSupported(r);
-    log(`${this.supported.size} PIDs soportados.`);
+    this.attempts = attempts;
+    throw new ElmError('La ECU no respondió con ningún método. Verifica que el contacto esté en ON (o el motor encendido). ' +
+      'Usa "Diagnóstico → Prueba de conexión completa" y envía el reporte.');
   }
 
-  async scanSupported(first0100) {
+  /**
+   * Prueba de conexión completa: ejecuta todas las estrategias con encabezados visibles
+   * y guarda las respuestas tal cual, para poder diagnosticar qué entiende la ECU.
+   */
+  async runReport(log = () => {}) {
+    const out = [];
+    const run = async (cmd, timeout = 6000) => {
+      let r;
+      try { r = await this.send(cmd, { timeout }); } catch (e) { r = `!! ${e.message}`; }
+      out.push(`> ${cmd}\n  ${(r || '(vacío)').replace(/\n/g, '\n  ')}`);
+      return r;
+    };
+    out.push(`# Clio Cluster - prueba de conexión`, `# ${new Date().toISOString()}`, `# ${navigator.userAgent}`, '');
+    log('Datos del adaptador…');
+    await run('ATZ', 5000);
+    for (const c of ['ATE0', 'ATL0', 'ATS1', 'ATI', 'AT@1', 'ATRV']) await run(c);
+    for (const st of STRATEGIES) {
+      log(`Probando: ${st.name}…`);
+      out.push('', `## ${st.name}`);
+      await run('ATPC');
+      await run('ATD');
+      for (const c of ['ATE0', 'ATL0', 'ATS1', 'ATH1']) await run(c);
+      for (const c of st.cmds) await run(c, 8000);
+      const r = await run('0100', 20000);
+      await run('ATDP');
+      if (!isError(r)) {
+        await run('0101');
+        await run('010C');
+        await run('0105');
+      }
+      if (st.id.startsWith('renault')) {
+        await run('10C0');  // iniciar sesión de diagnóstico (Renault)
+        await run('2180');  // identificación de la ECU (Renault)
+      }
+    }
+    await run('ATPC');
+    await run('ATD');
+    return out.join('\n');
+  }
+
+  async scanSupported(first0100, log = () => {}) {
     this.supported.clear();
     for (const base of [0x00, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0]) {
       const pid = hex(base);
@@ -133,6 +216,15 @@ export class ELM327 {
         if (mask & (1 << (31 - i))) this.supported.add(hex(base + i + 1));
       }
       if (!(mask & 1)) break;
+    }
+    // Si la ECU no reporta su lista (o viene vacía), se prueban uno por uno los PIDs más comunes.
+    const real = [...this.supported].filter(p => !['20', '40', '60', '80', 'A0', 'C0', 'E0'].includes(p));
+    if (!real.length) {
+      log('La ECU no reportó su lista de sensores; probando los más comunes uno por uno…');
+      for (const pid of COMMON_PIDS) {
+        const b = await this.queryRaw(pid).catch(() => null);
+        if (b && b.length) this.supported.add(pid);
+      }
     }
   }
 
@@ -252,8 +344,12 @@ function extractPid(resp, mode, pid) {
   for (const line of resp.split('\n')) {
     let l = line.replace(/\s/g, '').toUpperCase();
     if (/^[0-9A-F]:/.test(l)) l = l.slice(2);
+    if (!/^[0-9A-F]+$/.test(l)) continue;
+    // Sin encabezados la respuesta empieza con "41xx". Si el adaptador ignora ATH0,
+    // viene precedida de 3 bytes de encabezado (ej. "83F110" en línea K) o de un ID CAN.
     const idx = l.indexOf(prefix);
-    if (idx >= 0 && idx <= 2) return toBytes(l.slice(idx + prefix.length));
+    // (idx 5 = ID CAN de 3 dígitos + byte de longitud, ej. "7E8 06 41 00 ...")
+    if (idx >= 0 && idx <= 10 && (idx % 2 === 0 || idx === 5)) return toBytes(l.slice(idx + prefix.length));
   }
   return null;
 }

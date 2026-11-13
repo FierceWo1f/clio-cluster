@@ -277,6 +277,7 @@ table.ff td:last-child { text-align: right; }
 .console .rx { color: #c9d3df; }
 .console .sys { color: var(--warn); }
 .console .err { color: var(--danger); }
+.console.report { height: 40vh; font-size: 12px; margin-top: 10px; }
 .console-form { display: flex; gap: 8px; margin-top: 10px; }
 .console-form input { flex: 1; font-family: Consolas, monospace; }
 

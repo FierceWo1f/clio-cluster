@@ -22,6 +22,9 @@ export class Simulator {
   constructor() {
     this.echo = true;
     this.searched = false;
+    this.header = '';
+    this.auto = true;
+    this.requirePhysical = true;
     this.last = performance.now();
     this.time = 0;
     // estado del motor
@@ -156,13 +159,23 @@ export class Simulator {
       if (at === 'E0') { this.echo = false; return { response: rawCmd + '\rOK', delay }; }
       if (at === 'E1') { this.echo = true; return out('OK'); }
       if (at === 'RV') { this._step(); return out((this.rpm > 600 ? 14.1 : 12.5 + Math.random() * 0.1).toFixed(1) + 'V'); }
-      if (at === 'DPN') return out('A5');
+      if (at.startsWith('SH')) { this.header = at.slice(2); return out('OK'); }
+      if (at === 'D') { this.header = ''; this.echo = true; return out('OK'); }
+      if (at === 'PC') { this.searched = false; return out('OK'); }
+      if (at.startsWith('SP')) { this.auto = at === 'SP0'; this.searched = false; return out('OK'); }
+      if (at === 'DPN') return out(this.auto ? 'A5' : '5');
       if (at === 'DP') return out('AUTO, ISO 14230-4 (KWP FAST)');
       if (at === '@1') return out('OBDII to RS232 Interpreter');
       return out('OK');
     }
 
     if (!/^[0-9A-F]+$/.test(cmd)) return out('?');
+    // Como muchas ECU Renault de 2002: solo contesta si se le habla directo al motor (ATSH 81 10 F1)
+    if (this.requirePhysical && this.header !== '8110F1') {
+      return this.auto
+        ? { response: echo + 'SEARCHING...\rUNABLE TO CONNECT', delay: 3000 }
+        : { response: echo + 'BUS INIT: ...ERROR', delay: 1500 };
+    }
     this._step();
     const mode = cmd.slice(0, 2);
     const prefix = !this.searched ? 'SEARCHING...\r' : '';

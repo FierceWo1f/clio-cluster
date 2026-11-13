@@ -744,7 +744,7 @@ async function initEcu() {
   state.ecuOk = false;
   setStatus('busy', 'Inicializando…');
   try {
-    await elm.init(m => progress(m));
+    await elm.init(m => progress(m), settings.elmStrategy);
   } catch (e) {
     if (!state.connected) return;
     progress(e.message, 'err');
@@ -761,6 +761,10 @@ async function initEcu() {
   }
   state.ecuOk = true;
   state.supported = new Set([...elm.supported].filter(k => PIDS[k]));
+  if (elm.strategy) { settings.elmStrategy = elm.strategy.id; saveSettings(); }
+  if (!state.supported.size) {
+    progress('La ECU contestó, pero no entrega ningún sensor estándar. Ve a Diagnóstico → "Prueba de conexión completa" y envía el reporte.', 'err');
+  }
   state.misses = {};
   state.errors = 0;
   state.stamps = {};
@@ -810,6 +814,7 @@ function renderEcuInfo() {
     rows.push(['Conexión', state.transport.label]);
     rows.push(['Adaptador', elm.version || '—']);
     rows.push(['Protocolo', elm.protocolName || 'No detectado']);
+    if (elm.strategy) rows.push(['Método', elm.strategy.name]);
     rows.push(['PIDs soportados', state.ecuOk ? String(state.supported.size) : '—']);
     if (state.values['1C'] !== undefined) rows.push(['Norma', formatValue('1C', state.values['1C'])]);
     if (state.vin) rows.push(['VIN', state.vin]);
@@ -897,6 +902,50 @@ $('#btnFreeze').addEventListener('click', e => withButton(e.target, async () => 
     ? `<table class="ff">${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`
     : '<p class="muted">No hay freeze frame guardado.</p>';
 }));
+
+// ---------- Prueba de conexión completa ----------
+let reportText = '';
+$('#btnReport').addEventListener('click', async e => {
+  const btn = e.target;
+  if (!state.elm || !confirm('La prueba pausa la lectura y tarda 1–3 minutos. Deja el contacto en ON. ¿Continuar?')) return;
+  const elm = state.elm;
+  const wasOk = state.ecuOk;
+  state.ecuOk = false;          // detiene el bucle de lectura
+  await delay(400);
+  btn.disabled = true;
+  const out = $('#reportOut');
+  out.hidden = false;
+  out.textContent = 'Iniciando…\n';
+  try {
+    reportText = await elm.runReport(m => { out.textContent += m + '\n'; out.scrollTop = out.scrollHeight; });
+    out.textContent = reportText;
+    $('#btnReportCopy').hidden = false;
+    $('#btnReportSave').hidden = false;
+    toast('Prueba terminada. Copia o descarga el reporte.');
+  } catch (err) {
+    out.textContent += '\nError: ' + err.message;
+  } finally {
+    btn.disabled = !state.connected;
+  }
+  // Reconectar a la ECU con el método normal
+  if (state.connected && state.elm === elm) {
+    $('#progressLog').innerHTML = '';
+    progressDialog.showModal();
+    await initEcu();
+  }
+});
+
+$('#btnReportCopy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(reportText); toast('Reporte copiado. Pégalo en el chat.'); }
+  catch { toast('No se pudo copiar; usa "Descargar .txt".', true); }
+});
+$('#btnReportSave').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([reportText], { type: 'text/plain;charset=utf-8' }));
+  a.download = `clio_prueba_conexion_${Date.now()}.txt`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+});
 
 $('#btnVin').addEventListener('click', e => withButton(e.target, async () => {
   const vin = await state.elm.readVin();
