@@ -37,7 +37,7 @@ MIME = {
     ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".m4a": "audio/mp4", ".wav": "audio/wav",
     ".lrc": "text/plain; charset=utf-8", ".txt": "text/plain; charset=utf-8",
     ".md": "text/plain; charset=utf-8", ".pmtiles": "application/octet-stream",
-    ".bin": "application/octet-stream",
+    ".bin": "application/octet-stream", ".apk": "application/vnd.android.package-archive",
 }
 
 clients = set()

@@ -84,5 +84,8 @@ emulador/emulador.py  lanza ELM327-emulator (con corrección para Windows)
 emulador/puente.py    puente WebSocket <-> TCP (emulador o ELM327 WiFi)
 emulador/.venv        Python aislado con el emulador instalado
 hub/hub.py            hub web + relay WebSocket; corre en el teléfono (Termux), solo Python estándar
+pantalla/             interfaz del estéreo (la sirve el hub; la muestra la app Clio Pantalla)
+android/pantalla/     app cascarón del estéreo: launcher + WebView, ver android/pantalla/LEEME.md
+dist/                 APK listo para instalar en el estéreo desde el hub
 tools/linktest/       prueba de enlace WiFi / Bluetooth (Fase 0), ver tools/linktest/LEEME.md
 ```
