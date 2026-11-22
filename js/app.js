@@ -650,6 +650,18 @@ function publishStereoConfig() {
   });
 }
 
+// Valores básicos del auto para los módulos del teléfono (ctx.obd()). Ver docs/PROTOCOLO.md
+function obdSnapshot() {
+  const speed = fresh('0D');
+  const lh = fresh('FUEL_LH');
+  return {
+    on: state.connected && state.ecuOk, speed, rpm: fresh('0C'), gear: state.values.GEAR ?? '—',
+    cool: fresh('05', 8000), volt: fresh('RV', 8000), thr: fresh('11'),
+    lh, l100: lh !== undefined && speed > 3 ? (lh / speed) * 100 : undefined,
+    trip: { km: state.trip.km, ms: state.trip.ms, fuel: state.trip.fuel },
+  };
+}
+
 // Estado del auto (10 veces por segundo). Los valores sin dato se omiten (undefined no viaja en JSON).
 function stereoSnapshot() {
   const rpm = fresh('0C');
@@ -1231,9 +1243,48 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW no registrado', err));
 }
 
+// ---------- módulos del teléfono: música, GPS, navegación, viajes (contrato en docs/PROTOCOLO.md) ----------
+const modules = {};
+const moduleCtx = {
+  publish: msg => stereo?.publish(msg),
+  publishBinary: buf => stereo?.publishBinary(buf),
+  obd: () => obdSnapshot(),
+  toast: (msg, err = false) => toast(msg, err),
+  modules,
+};
+// Prefijo del comando -> módulo que lo atiende
+const COMMAND_OWNERS = { music: 'music', nav: 'nav', trips: 'trips', maint: 'trips' };
+
+async function loadModule(name, file, exportName, mountId) {
+  try {
+    const mod = await import(file);
+    const inst = new mod[exportName](moduleCtx);
+    modules[name] = inst;
+    const el = mountId && document.getElementById(mountId);
+    if (el && inst.mount) inst.mount(el);
+  } catch (e) {
+    console.error(`No se pudo cargar el módulo ${name}`, e);
+  }
+}
+
+const modulesReady = (async () => {
+  // El orden importa: nav y trips usan gps; nav usa music (bajar el volumen al hablar).
+  await loadModule('music', './media.js', 'MusicPlayer', 'musicMount');
+  await loadModule('gps', './gps.js', 'Gps', null);
+  await loadModule('nav', './nav.js', 'Nav', 'navMount');
+  await loadModule('trips', './trips.js', 'Trips', 'tripsMount');
+})();
+
 {
   const link = new StereoLink({
-    onCommand: m => { if (m.a === 'mode') setMode(m.v); },
+    onCommand: m => {
+      if (m.a === 'mode') { setMode(m.v); return; }
+      const owner = COMMAND_OWNERS[String(m.a || '').split('.')[0]];
+      const mod = owner && modules[owner];
+      if (mod?.command) {
+        try { mod.command(m); } catch (e) { console.error(e); }
+      }
+    },
     onStatus: ({ open, screens }) => {
       const el = $('#stereoState');
       if (el) {
@@ -1243,7 +1294,14 @@ if ('serviceWorker' in navigator) {
       }
     },
   });
-  link.onScreen = () => publishStereoConfig();
+  link.onScreen = () => {
+    publishStereoConfig();
+    modulesReady.then(() => {
+      for (const mod of Object.values(modules)) {
+        try { mod.resend?.(); } catch (e) { console.error(e); }
+      }
+    });
+  };
   link.start().then(ok => { if (ok) stereo = link; });
 }
 

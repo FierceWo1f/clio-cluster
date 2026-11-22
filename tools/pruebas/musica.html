@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prueba: música</title>
+<link rel="stylesheet" href="../../css/app.css">
+<style>
+  main { max-width: 800px; }
+  #estado { font-size: 13px; }
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><div><strong>Prueba del reproductor</strong><small>js/media.js sin tocar app.js</small></div></div>
+  <span id="estado" class="hz stereo">Sin hub</span>
+</header>
+<main>
+  <section id="view-musica" class="view active"></section>
+  <p class="muted small">Mensajes enviados al estéreo: <span id="cuenta">0</span> JSON, <span id="cuentaBin">0</span> binarios.</p>
+</main>
+<div id="toast" class="toast"></div>
+<script type="module">
+  import { StereoLink } from '../../js/link.js';
+  import { MusicPlayer } from '../../js/media.js';
+
+  const $ = s => document.querySelector(s);
+  let toastTimer;
+  function toast(msg, err = false) {
+    const t = $('#toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (err ? ' err' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = 'toast'; }, 4000);
+  }
+
+  const stats = { json: 0, bin: 0 };
+  const modules = {};
+  const stereo = new StereoLink({
+    onCommand: m => {
+      if (typeof m.a === 'string' && m.a.startsWith('music.')) modules.music.command(m);
+    },
+    onStatus: s => {
+      $('#estado').textContent = s.open ? `Hub conectado · ${s.screens} pantalla(s)` : 'Sin hub';
+      $('#estado').classList.toggle('on', s.open && s.screens > 0);
+    },
+  });
+  stereo.onScreen = () => modules.music.resend();
+
+  const ctx = {
+    publish: m => { stats.json++; stereo.publish(m); },
+    publishBinary: b => { stats.bin++; stereo.publishBinary(b); },
+    obd: () => ({ on: false }),
+    toast,
+    modules,
+  };
+  modules.music = new MusicPlayer(ctx);
+  modules.music.mount($('#view-musica'));
+  stereo.start();
+  setInterval(() => { $('#cuenta').textContent = stats.json; $('#cuentaBin').textContent = stats.bin; }, 500);
+  window.musica = modules.music; // para depurar desde la consola
+  window.stats = stats;
+</script>
+</body>
+</html>

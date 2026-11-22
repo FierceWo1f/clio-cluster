@@ -8,7 +8,12 @@ así corre en Termux (estéreo) o en la PC sin instalar nada.
     El hub no interpreta los mensajes; solo avisa cuando alguien entra o sale
     con {"t":"hub","clients":[...roles]}.
 
-Uso:  python hub/hub.py [--port 8080] [--host 0.0.0.0]
+  - Música del teléfono:          GET /hub/music  (lista JSON)   GET /media/<i>/<ruta> (archivo)
+    Los archivos se sirven con soporte de Range (206) para poder adelantar en <audio>.
+
+Uso:  python hub/hub.py [--port 8080] [--host 0.0.0.0] [--musica DIR]...
+      --musica se puede repetir; si no se da, se usan las carpetas que existan de:
+      ~/storage/music, ~/storage/shared/Music, ~/storage/shared/Download, ~/storage/downloads, musica/
 """
 
 import argparse
@@ -17,9 +22,10 @@ import base64
 import hashlib
 import json
 import os
+import re
 import struct
 import sys
-from urllib.parse import unquote, urlsplit, parse_qs
+from urllib.parse import quote, unquote, urlsplit, parse_qs
 
 ROOT = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 WS_GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -35,12 +41,19 @@ MIME = {
     ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
     ".webp": "image/webp", ".ico": "image/x-icon", ".woff2": "font/woff2",
     ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".m4a": "audio/mp4", ".wav": "audio/wav",
+    ".aac": "audio/aac", ".opus": "audio/ogg", ".flac": "audio/flac",
     ".lrc": "text/plain; charset=utf-8", ".txt": "text/plain; charset=utf-8",
     ".md": "text/plain; charset=utf-8", ".pmtiles": "application/octet-stream",
     ".bin": "application/octet-stream", ".apk": "application/vnd.android.package-archive",
 }
 
+AUDIO_EXT = {".mp3", ".m4a", ".aac", ".ogg", ".opus", ".flac", ".wav"}
+CHUNK = 256 * 1024  # los archivos se mandan por partes, sin cargarlos completos en memoria
+DEFAULT_MUSIC = ["~/storage/music", "~/storage/shared/Music", "~/storage/shared/Download",
+                 "~/storage/downloads", os.path.join(ROOT, "musica")]
+
 clients = set()
+music_dirs = []  # carpetas de música (rutas reales); se llenan en main()
 
 
 class Client:
@@ -155,10 +168,20 @@ async def handle_ws(reader, writer, headers, query):
         announce()
 
 
-async def handle_http(writer, method, path):
+def safe_join(base, rel):
+    """Une base + rel y regresa la ruta real solo si queda dentro de base (si no, None)."""
+    if "\0" in rel:
+        return None
+    full = os.path.realpath(os.path.join(base, rel))
+    if full != base and not full.startswith(base.rstrip(os.sep) + os.sep):
+        return None
+    return full
+
+
+async def handle_http(writer, method, path, headers):
     rel = unquote(path).lstrip("/")
-    full = os.path.realpath(os.path.join(ROOT, rel))
-    if full != ROOT and not full.startswith(ROOT + os.sep):
+    full = safe_join(ROOT, rel)
+    if full is None:
         return await respond(writer, 403, b"Prohibido")
     if os.path.isdir(full):
         if not path.endswith("/"):
@@ -166,23 +189,121 @@ async def handle_http(writer, method, path):
         full = os.path.join(full, "index.html")
     if not os.path.isfile(full):
         return await respond(writer, 404, b"No encontrado")
+    await send_file(writer, method, full, headers)
+
+
+async def handle_media(writer, method, path, headers):
+    """GET /media/<i>/<ruta>: archivo de la carpeta de música número i."""
+    parts = path.split("/", 3)  # ["", "media", "<i>", "<ruta codificada>"]
+    if len(parts) < 4 or not parts[2].isdigit() or int(parts[2]) >= len(music_dirs):
+        return await respond(writer, 404, b"No encontrado")
+    base = music_dirs[int(parts[2])]
+    full = safe_join(base, unquote(parts[3]).lstrip("/\\"))
+    if full is None:
+        return await respond(writer, 403, b"Prohibido")
+    if not os.path.isfile(full):
+        return await respond(writer, 404, b"No encontrado")
+    await send_file(writer, method, full, headers)
+
+
+def parse_range(value, size):
+    """Interpreta 'bytes=a-b' (un solo rango). Regresa (inicio, fin) inclusivo, None si no hay
+    un rango que usar (se manda todo) o False si no se puede satisfacer (416)."""
+    m = re.fullmatch(r"\s*bytes\s*=\s*(\d*)\s*-\s*(\d*)\s*", value or "")
+    if not m or (not m.group(1) and not m.group(2)):
+        return None  # sin rango o con varios rangos: se manda el archivo completo
+    if m.group(1):
+        start = int(m.group(1))
+        end = int(m.group(2)) if m.group(2) else size - 1
+    else:  # sufijo "bytes=-N": los últimos N bytes
+        n = int(m.group(2))
+        if n == 0:
+            return False
+        start, end = max(0, size - n), size - 1
+    if start >= size or end < start:
+        return False
+    return start, min(end, size - 1)
+
+
+async def send_file(writer, method, full, headers):
+    """Manda un archivo con soporte de Range, leyéndolo por partes."""
     ext = os.path.splitext(full)[1].lower()
-    with open(full, "rb") as f:
-        body = f.read()
-    await respond(writer, 200, body if method == "GET" else b"",
-                  {"Content-Type": MIME.get(ext, "application/octet-stream"),
-                   "Cache-Control": "no-cache"}, length=len(body))
+    size = os.path.getsize(full)
+    hdrs = {"Content-Type": MIME.get(ext, "application/octet-stream"),
+            "Cache-Control": "no-cache", "Accept-Ranges": "bytes"}
+    rng = parse_range(headers.get("range"), size) if "range" in headers else None
+    if rng is False:
+        hdrs["Content-Range"] = f"bytes */{size}"
+        return await respond(writer, 416, b"", hdrs)
+    if rng:
+        start, end = rng
+        status = 206
+        hdrs["Content-Range"] = f"bytes {start}-{end}/{size}"
+    else:
+        start, end, status = 0, size - 1, 200
+    length = end - start + 1 if size else 0
+    if method != "GET" or length <= CHUNK:  # archivo chico (lo normal en la app): de un jalón
+        body = b""
+        if method == "GET" and length:
+            with open(full, "rb") as f:
+                f.seek(start)
+                body = f.read(length)
+        return await respond(writer, status, body, hdrs, length=length)
+    await respond(writer, status, b"", hdrs, length=length, close=False)
+    try:
+        with open(full, "rb") as f:
+            f.seek(start)
+            left = length
+            while left > 0:
+                chunk = f.read(min(CHUNK, left))
+                if not chunk:
+                    break
+                writer.write(chunk)
+                left -= len(chunk)
+                await writer.drain()
+    finally:
+        writer.close()
 
 
-async def respond(writer, status, body, extra=None, length=None):
-    reason = {200: "OK", 301: "Moved", 400: "Bad Request", 403: "Forbidden",
-              404: "Not Found", 405: "Method Not Allowed"}.get(status, "")
+def scan_music():
+    """Recorre las carpetas de música y arma el JSON de /hub/music."""
+    files = []
+    for i, base in enumerate(music_dirs):
+        for dirpath, dirnames, filenames in os.walk(base):
+            dirnames[:] = sorted((d for d in dirnames if not d.startswith(".")), key=str.lower)
+            lrcs = {os.path.splitext(n)[0]: n for n in filenames if n.lower().endswith(".lrc")}
+            sub = os.path.relpath(dirpath, base).replace(os.sep, "/")
+            dname = os.path.basename(base) + ("" if sub == "." else "/" + sub)
+            for name in sorted(filenames, key=str.lower):
+                stem, ext = os.path.splitext(name)
+                if ext.lower() not in AUDIO_EXT or name.startswith("."):
+                    continue
+                full = os.path.join(dirpath, name)
+                try:
+                    size = os.path.getsize(full)
+                except OSError:
+                    continue
+                rel = os.path.relpath(full, base).replace(os.sep, "/")
+                lrc = None
+                if stem in lrcs:
+                    lrel = os.path.relpath(os.path.join(dirpath, lrcs[stem]), base).replace(os.sep, "/")
+                    lrc = f"/media/{i}/{quote(lrel)}"
+                files.append({"url": f"/media/{i}/{quote(rel)}", "name": stem, "dir": dname,
+                              "size": size, "lrc": lrc})
+    return {"dirs": [os.path.basename(d) or d for d in music_dirs], "files": files}
+
+
+async def respond(writer, status, body, extra=None, length=None, close=True):
+    reason = {200: "OK", 206: "Partial Content", 301: "Moved", 400: "Bad Request", 403: "Forbidden",
+              404: "Not Found", 405: "Method Not Allowed",
+              416: "Range Not Satisfiable"}.get(status, "")
     hdrs = {"Content-Length": str(len(body) if length is None else length), "Connection": "close"}
     hdrs.update(extra or {})
     head = f"HTTP/1.1 {status} {reason}\r\n" + "".join(f"{k}: {v}\r\n" for k, v in hdrs.items())
     writer.write(head.encode() + b"\r\n" + body)
     await writer.drain()
-    writer.close()
+    if close:
+        writer.close()
 
 
 async def on_connect(reader, writer):
@@ -212,7 +333,14 @@ async def on_connect(reader, writer):
     if method not in ("GET", "HEAD"):
         return await respond(writer, 405, b"")
     try:
-        await handle_http(writer, method, url.path)
+        if url.path == "/hub/music":
+            data = await asyncio.to_thread(scan_music)  # en otro hilo para no frenar el relay
+            body = json.dumps(data, ensure_ascii=False).encode()
+            return await respond(writer, 200, body, {"Content-Type": "application/json; charset=utf-8",
+                                                     "Cache-Control": "no-cache"})
+        if url.path.startswith("/media/"):
+            return await handle_media(writer, method, url.path, headers)
+        await handle_http(writer, method, url.path, headers)
     except ConnectionError:
         pass
 
@@ -270,9 +398,22 @@ async def main():
     ap = argparse.ArgumentParser(description="Hub de Clio (web + relay WebSocket)")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8080)
+    ap.add_argument("--musica", action="append", metavar="DIR",
+                    help="carpeta de música (se puede repetir)")
     args = ap.parse_args()
+    for d in (args.musica or DEFAULT_MUSIC):
+        full = os.path.realpath(os.path.expanduser(d))
+        if os.path.isdir(full):
+            if full not in music_dirs:
+                music_dirs.append(full)
+        elif args.musica:
+            print(f"  (aviso) no existe la carpeta de música: {d}")
     server = await asyncio.start_server(on_connect, args.host, args.port, limit=MAX_HEADER)
     print(f"Hub listo (carpeta {ROOT})   Ctrl+C para salir")
+    if music_dirs:
+        print("  Música: " + ", ".join(music_dirs))
+    else:
+        print("  Música: no hay carpetas (en Termux ejecuta termux-setup-storage y reinicia el hub)")
     print(f"  En este equipo:  http://localhost:{args.port}/tools/linktest/")
     for name, ip in local_ips():
         print(f"  Desde el estéreo ({name}):  http://{ip}:{args.port}/tools/linktest/")

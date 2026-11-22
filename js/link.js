@@ -65,4 +65,11 @@ export class StereoLink {
     if (this.ws.bufferedAmount > 64 * 1024) return;
     this.ws.send(JSON.stringify(msg));
   }
+
+  /** Envía datos binarios (espectro de audio) si hay alguna pantalla escuchando. */
+  publishBinary(buf) {
+    if (!this.open || !this.screens || this.ws.readyState !== WebSocket.OPEN) return;
+    if (this.ws.bufferedAmount > 32 * 1024) return;
+    this.ws.send(buf);
+  }
 }

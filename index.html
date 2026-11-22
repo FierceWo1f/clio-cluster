@@ -37,6 +37,8 @@
 
   <nav class="tabs" id="tabs">
     <button data-view="cluster" class="active">Cluster</button>
+    <button data-view="musica">Música</button>
+    <button data-view="viaje">Viaje</button>
     <button data-view="sensores">Sensores</button>
     <button data-view="graficas">Gráficas</button>
     <button data-view="diagnostico">Diagnóstico</button>
@@ -118,6 +120,17 @@
     </section>
 
     <!-- SENSORES -->
+    <!-- MÚSICA (js/media.js) -->
+    <section id="view-musica" class="view">
+      <div id="musicMount"></div>
+    </section>
+
+    <!-- VIAJE: navegación (js/nav.js) + odómetro, mantenimiento y viajes (js/trips.js) -->
+    <section id="view-viaje" class="view">
+      <div id="navMount"></div>
+      <div id="tripsMount"></div>
+    </section>
+
     <section id="view-sensores" class="view">
       <div class="toolbar">
         <input id="sensorFilter" type="search" placeholder="Buscar sensor…">

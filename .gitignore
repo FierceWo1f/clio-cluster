@@ -5,3 +5,7 @@ elm.log*
 emulador/elm.log*
 __pycache__/
 *.csv
+
+# Datos de mapa descargados (tools/mapa/descargar.py) y música local de prueba
+datos/
+musica/
