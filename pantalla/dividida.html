@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Música + Mapa</title>
+<link rel="icon" href="data:,">
+<!-- Vista dividida 1024×600: mapa compacto (640 px) + mini reproductor (384 px).
+     Para probar con otros datos: dividida.html?base=/datos/prueba-mapa/ -->
+<style>
+  :root {
+    --bg:#04060b; --panel:rgba(8,13,22,.88); --line:rgba(80,130,200,.28); --text:#eef4ff; --dim:#8a97ad;
+    --acc:#19e3ff; --acc-rgb:25,227,255; --red:#ff2d55; --amber:#ffb020;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none; }
+  html, body { margin:0; height:100%; overflow:hidden; background:var(--bg); color:var(--text); font-family:system-ui, Roboto, sans-serif; }
+  body { display:flex; flex-direction:row; }
+  body.swap { flex-direction:row-reverse; }
+  [hidden] { display:none !important; }
+  .num { font-variant-numeric:tabular-nums; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:0 4px 18px rgba(0,0,0,.45); }
+
+  #left { position:relative; flex:0 0 640px; width:640px; height:100%; overflow:hidden; }
+  #map { position:absolute; top:0; left:0; width:100%; height:100%; display:block; }
+  #right { position:relative; flex:0 0 384px; width:384px; height:100%; overflow:hidden; background:#070a10;
+    border-left:1px solid #141c29; }
+  body.swap #right { border-left:0; border-right:1px solid #141c29; }
+  .hud { position:absolute; z-index:3; }
+
+  /* maniobra compacta */
+  #man { left:10px; top:10px; width:300px; padding:8px 12px 8px 8px; display:flex; align-items:center;
+    border-color:rgba(var(--acc-rgb),.45); box-shadow:0 0 18px rgba(var(--acc-rgb),.14), 0 4px 18px rgba(0,0,0,.5); }
+  #manArrow { width:66px; height:66px; flex:0 0 auto; margin-right:10px; }
+  #manArrow svg, #bigArrow svg { width:100%; height:100%; display:block; filter:drop-shadow(0 0 5px rgba(var(--acc-rgb),.6)); }
+  #man .txt { min-width:0; flex:1; }
+  #manDist { font-size:34px; font-weight:700; line-height:1; }
+  #manDist small, #bigDist small { font-size:.5em; color:var(--dim); margin-left:3px; font-weight:600; }
+  #manName { font-size:17px; font-weight:600; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #manRally { position:absolute; right:8px; top:6px; font:800 15px system-ui, sans-serif; padding:2px 7px; border-radius:6px; border:2px solid; }
+  .bar { height:5px; background:rgba(255,255,255,.08); border-radius:3px; margin-top:6px; overflow:hidden; }
+  .bar i { display:block; height:100%; width:0; background:var(--acc); box-shadow:0 0 8px var(--acc); }
+  .g1, .g2 { color:#ff4d6a; border-color:#ff4d6a; background:rgba(255,45,85,.14); }
+  .g3, .g4 { color:var(--amber); border-color:var(--amber); background:rgba(255,176,32,.12); }
+  .g5, .g6 { color:#4ade80; border-color:#4ade80; background:rgba(34,197,94,.12); }
+
+  /* velocidad */
+  #drive { left:10px; bottom:10px; display:flex; align-items:flex-end; }
+  #speedBox { padding:4px 12px 6px; text-align:center; min-width:104px; }
+  #speed { font-size:50px; font-weight:700; line-height:.95; letter-spacing:-1px; }
+  #speed.over { color:#ff4d6a; text-shadow:0 0 14px rgba(255,45,85,.7); }
+  #speedBox small { display:block; color:var(--dim); font-size:12px; letter-spacing:1px; }
+  #limit { width:56px; height:56px; border-radius:50%; background:#fff; border:7px solid #e0102f; color:#111; display:flex;
+    align-items:center; justify-content:center; font:800 19px system-ui, sans-serif; margin:0 0 4px 8px; box-shadow:0 0 0 2px #fff; }
+  #street { left:50%; bottom:12px; transform:translateX(-50%); max-width:250px; font-size:16px; font-weight:600; padding:8px 14px;
+    border-radius:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #eta { right:10px; bottom:10px; padding:6px 12px; text-align:right; }
+  #eta b { display:block; font-size:22px; }
+  #eta small { color:var(--dim); font-size:12px; }
+
+  /* botones */
+  #tools { right:10px; top:10px; display:flex; gap:8px; }
+  .btn { height:52px; min-width:52px; padding:0 12px; border-radius:12px; border:1px solid var(--line); background:var(--panel); color:var(--text);
+    font:600 22px system-ui, sans-serif; display:flex; align-items:center; justify-content:center; text-decoration:none; }
+  .btn:active { transform:scale(.95); border-color:var(--acc); }
+
+  #status { left:50%; top:44%; transform:translate(-50%, -50%); width:520px; max-width:calc(100% - 30px); padding:14px 18px; text-align:center; pointer-events:none; }
+  #status h3 { margin:0 0 6px; font-size:21px; }
+  #status p { margin:0; color:#b7c3d6; font-size:15px; line-height:1.4; }
+  #status code { display:inline-block; margin-top:6px; background:#0b1422; border:1px solid var(--line); border-radius:6px; padding:5px 8px; color:#bff3ff; font:13px ui-monospace, Consolas, monospace; }
+
+  /* maniobra grande (encima de ambos paneles cuando falta poco) */
+  #big { position:fixed; z-index:20; left:50%; top:70px; width:600px; padding:14px 24px 14px; display:flex; align-items:center;
+    background:rgba(6,11,19,.95); border:2px solid var(--amber); border-radius:20px; box-shadow:0 0 50px rgba(255,176,32,.35), 0 12px 50px rgba(0,0,0,.7);
+    transform:translate(-50%, 0) scale(.6); transform-origin:50% 0; opacity:0; pointer-events:none; transition:transform .25s ease-out, opacity .2s; }
+  #big.show { transform:translate(-50%, 0) scale(1); opacity:1; pointer-events:auto; }
+  #bigArrow { width:124px; height:124px; flex:0 0 auto; margin-right:20px; }
+  #big .txt { flex:1; min-width:0; }
+  #bigDist { font-size:66px; font-weight:800; line-height:1; letter-spacing:-2px; }
+  #bigText { color:#ffe2b0; font-size:19px; margin-top:4px; }
+  #bigName { font-size:26px; font-weight:600; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #big .bar { height:8px; margin-top:8px; }
+  #big .bar i { background:var(--amber); box-shadow:0 0 10px var(--amber); }
+  #bigRally { position:absolute; right:16px; top:14px; font:800 26px system-ui, sans-serif; padding:4px 12px; border-radius:8px; border:2px solid; }
+  #bigRally small { display:block; font-size:12px; text-align:center; }
+
+  .mv-recenter { left:50%; right:auto !important; bottom:62px !important; transform:translateX(-50%); }
+  .mv-recenter:active { transform:translateX(-50%) scale(.96); }
+  #playerMsg { color:var(--dim); padding:30px 20px; text-align:center; font-size:16px; line-height:1.5; }
+</style>
+</head>
+<body>
+  <div id="left">
+    <canvas id="map"></canvas>
+    <div class="hud panel" id="man" hidden>
+      <div id="manArrow"></div>
+      <div class="txt">
+        <div id="manDist" class="num">—</div>
+        <div id="manName"></div>
+        <div class="bar"><i id="manBar"></i></div>
+      </div>
+      <div id="manRally" hidden></div>
+    </div>
+    <div class="hud" id="tools">
+      <a class="btn" id="btnFull" href="mapa.html" aria-label="Mapa completo">⤢</a>
+      <button class="btn" id="btnSwap" aria-label="Intercambiar lados">⇄</button>
+      <a class="btn" href="./" aria-label="Inicio" style="font-size:26px">⌂</a>
+    </div>
+    <div class="hud" id="drive">
+      <div class="panel" id="speedBox"><div id="speed" class="num">—</div><small>KM/H</small></div>
+      <div id="limit" class="num" hidden></div>
+    </div>
+    <div class="hud panel" id="street" hidden></div>
+    <div class="hud panel" id="eta" hidden><b class="num" id="etaTime">--:--</b><small id="etaRemain"></small></div>
+    <div class="hud panel" id="status" hidden><h3 id="stTitle"></h3><p id="stText"></p></div>
+  </div>
+  <div id="right"><div id="musica" style="position:absolute;top:0;left:0;right:0;bottom:0"></div></div>
+
+  <div id="big">
+    <div id="bigArrow"></div>
+    <div class="txt">
+      <div id="bigDist" class="num"></div>
+      <div id="bigText"></div>
+      <div id="bigName"></div>
+      <div class="bar"><i id="bigBar"></i></div>
+    </div>
+    <div id="bigRally" hidden></div>
+  </div>
+
+<script type="module" src="dividida.js"></script>
+</body>
+</html>

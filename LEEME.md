@@ -85,6 +85,11 @@ emulador/puente.py    puente WebSocket <-> TCP (emulador o ELM327 WiFi)
 emulador/.venv        Python aislado con el emulador instalado
 hub/hub.py            hub web + relay WebSocket; corre en el teléfono (Termux), solo Python estándar
 pantalla/             interfaz del estéreo (la sirve el hub; la muestra la app Clio Pantalla)
+                      cluster, musica, mapa, dividida (Música + Mapa), viajes, tiempos
+js/media.js, gps.js, nav.js, trips.js   módulos del teléfono (pestañas Música y Viaje)
+tools/mapa/           descarga del mapa para usarlo sin internet
+docs/PROTOCOLO.md     mensajes entre teléfono y estéreo
+iniciar.sh            actualiza y arranca el hub en Termux (--atajo crea el botón)
 android/pantalla/     app cascarón del estéreo: launcher + WebView, ver android/pantalla/LEEME.md
 dist/                 APK listo para instalar en el estéreo desde el hub
 tools/linktest/       prueba de enlace WiFi / Bluetooth (Fase 0), ver tools/linktest/LEEME.md

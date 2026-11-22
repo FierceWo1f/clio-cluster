@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Mapa</title>
+<link rel="icon" href="data:,">
+<!-- Mapa con navegación estilo juego de carreras (1024×600).
+     Para probar con otros datos: mapa.html?base=/datos/prueba-mapa/  (por defecto /datos/mapa/) -->
+<style>
+  :root {
+    --bg:#04060b; --panel:rgba(8,13,22,.86); --line:rgba(80,130,200,.28); --text:#eef4ff; --dim:#8a97ad;
+    --acc:#19e3ff; --acc-rgb:25,227,255; --red:#ff2d55; --amber:#ffb020; --ok:#22c55e;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none; }
+  html, body { margin:0; height:100%; overflow:hidden; background:var(--bg); color:var(--text); font-family:system-ui, Roboto, sans-serif; }
+  #wrap { position:absolute; top:0; left:0; right:0; bottom:0; }
+  #map { position:absolute; top:0; left:0; right:0; bottom:0; width:100%; height:100%; display:block; }
+  .hud { position:absolute; z-index:3; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; box-shadow:0 6px 24px rgba(0,0,0,.45); }
+  .num { font-variant-numeric:tabular-nums; }
+  [hidden] { display:none !important; }
+
+  /* ---- maniobra */
+  #man { left:12px; top:12px; width:350px; padding:12px 14px 10px; overflow:hidden;
+    border-color:rgba(var(--acc-rgb),.45); box-shadow:0 0 24px rgba(var(--acc-rgb),.15), 0 6px 24px rgba(0,0,0,.5); }
+  #man .row { display:flex; align-items:center; }
+  #manArrow { width:104px; height:104px; flex:0 0 auto; margin-right:12px; }
+  #manArrow svg { width:100%; height:100%; display:block; filter:drop-shadow(0 0 6px rgba(var(--acc-rgb),.6)); }
+  #manDist { font-size:52px; font-weight:700; line-height:1; letter-spacing:-1px; }
+  #manDist small { font-size:24px; font-weight:600; margin-left:3px; color:var(--dim); }
+  #manText { color:#bfe9ff; font-size:17px; margin-top:6px; }
+  #manName { font-size:23px; font-weight:600; margin-top:8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bar { height:7px; background:rgba(255,255,255,.08); border-radius:4px; margin-top:9px; overflow:hidden; }
+  .bar i { display:block; height:100%; width:0; background:linear-gradient(90deg, #0a8fb0, var(--acc)); border-radius:4px; box-shadow:0 0 10px var(--acc); }
+  #man.near { border-color:var(--amber); box-shadow:0 0 30px rgba(255,176,32,.35); }
+  #man.near .bar i { background:linear-gradient(90deg, #b36b00, var(--amber)); box-shadow:0 0 10px var(--amber); }
+  #man.off { border-color:var(--amber); }
+  #rally { position:absolute; right:10px; top:10px; font:800 22px system-ui, sans-serif; padding:4px 10px; border-radius:8px; letter-spacing:1px; border:2px solid; }
+  #rally small { display:block; font-size:11px; font-weight:600; letter-spacing:.4px; text-align:center; }
+  .g1, .g2 { color:#ff4d6a; border-color:#ff4d6a; background:rgba(255,45,85,.14); }
+  .g3, .g4 { color:var(--amber); border-color:var(--amber); background:rgba(255,176,32,.12); }
+  .g5, .g6 { color:#4ade80; border-color:#4ade80; background:rgba(34,197,94,.12); }
+  #then { left:12px; width:350px; padding:8px 14px; display:flex; align-items:center; font-size:16px; color:var(--dim); }
+  #then .mini { width:34px; height:34px; margin:0 10px 0 6px; flex:0 0 auto; }
+  #then .mini svg { width:100%; height:100%; display:block; }
+  #then b { color:var(--text); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; }
+  #then span.num { margin-left:8px; }
+
+  /* ---- barra de botones */
+  #tools { right:12px; top:12px; display:flex; gap:10px; }
+  .btn { height:56px; min-width:56px; padding:0 18px; border-radius:14px; border:1px solid var(--line); background:var(--panel);
+    color:var(--text); font:600 18px system-ui, Roboto, sans-serif; display:flex; align-items:center; justify-content:center;
+    gap:8px; text-decoration:none; }
+  .btn:active { transform:scale(.96); border-color:var(--acc); }
+  .btn.home { font-size:28px; padding:0; width:56px; }
+  .btn.acc { border-color:rgba(var(--acc-rgb),.6); color:#dffaff; box-shadow:0 0 14px rgba(var(--acc-rgb),.2); }
+  .btn svg { width:22px; height:22px; }
+  #voice { right:12px; top:78px; display:flex; padding:3px; border-radius:14px; }
+  #voice button { height:50px; padding:0 14px; border:0; border-radius:11px; background:none; color:var(--dim); font:600 16px system-ui, sans-serif; }
+  #voice button.on { background:#16304a; color:#fff; box-shadow:inset 0 0 0 1px rgba(var(--acc-rgb),.5); }
+  #voice button[data-v="off"].on { background:#3a1520; box-shadow:inset 0 0 0 1px rgba(255,45,85,.6); }
+  #voice .lbl { align-self:center; color:var(--dim); font-size:13px; padding:0 8px 0 10px; text-transform:uppercase; letter-spacing:.6px; }
+  #cancel { right:12px; bottom:116px; border-color:rgba(255,45,85,.6); color:#ffd0d8; }
+
+  /* ---- manejo */
+  #drive { left:12px; bottom:12px; display:flex; align-items:flex-end; }
+  #speedBox { padding:6px 16px 8px; text-align:center; min-width:150px; }
+  #speed { font-size:78px; font-weight:700; line-height:.95; letter-spacing:-2px; }
+  #speedBox small { display:block; color:var(--dim); font-size:14px; letter-spacing:1px; }
+  #limit { width:78px; height:78px; border-radius:50%; background:#fff; border:9px solid #e0102f; color:#111; display:flex;
+    align-items:center; justify-content:center; font:800 27px system-ui, sans-serif; margin:0 0 6px 12px; letter-spacing:-1px;
+    box-shadow:0 0 0 2px #fff, 0 4px 16px rgba(0,0,0,.5); }
+  #limit.over { animation:over .5s infinite alternate; }
+  #speed.over { color:#ff4d6a; text-shadow:0 0 18px rgba(255,45,85,.7); }
+  @keyframes over { to { transform:scale(1.08); box-shadow:0 0 0 2px #fff, 0 0 26px rgba(255,45,85,.9); } }
+  #street { left:50%; bottom:14px; transform:translateX(-50%); max-width:380px; padding:10px 20px; font-size:20px; font-weight:600;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-radius:26px; }
+  #trip { right:12px; bottom:12px; padding:8px 16px; display:flex; gap:18px; align-items:flex-end; }
+  #trip div { text-align:right; }
+  #trip b { display:block; font-size:30px; font-weight:700; line-height:1.05; }
+  #trip small { color:var(--dim); font-size:13px; text-transform:uppercase; letter-spacing:.6px; }
+  #clockBox b { color:var(--dim); font-weight:400; }
+
+  /* ---- avisos */
+  #status { left:50%; top:50%; transform:translate(-50%, -62%); width:600px; padding:22px 26px; text-align:center; pointer-events:none; }
+  #status h2 { margin:0 0 8px; font-size:26px; font-weight:600; }
+  #status p { margin:0; color:#b7c3d6; font-size:18px; line-height:1.45; }
+  #status code { display:inline-block; margin-top:10px; background:#0b1422; border:1px solid var(--line); border-radius:8px; padding:8px 12px;
+    color:#bff3ff; font:15px ui-monospace, Consolas, monospace; user-select:text; }
+  #status.warn { border-color:rgba(255,176,32,.55); }
+  #busy { left:50%; top:14px; transform:translateX(-50%); padding:12px 20px; font-size:18px; display:flex; align-items:center; gap:12px; border-color:rgba(var(--acc-rgb),.5); }
+  #busy i { width:20px; height:20px; border-radius:50%; border:3px solid rgba(var(--acc-rgb),.25); border-top-color:var(--acc); animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* ---- ¿Ir aquí? */
+  #pick { right:12px; top:146px; width:400px; padding:16px 18px; border-color:rgba(255,214,10,.55); }
+  #pick h3 { margin:0; font-size:24px; }
+  #pick p { margin:4px 0 14px; color:var(--dim); font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #pick .acts { display:flex; gap:12px; }
+  #pick .btn { flex:1; }
+  .btn.go { background:#0b4a5c; border-color:var(--acc); color:#fff; }
+
+  /* ---- buscador */
+  #search { position:absolute; top:0; left:0; right:0; bottom:0; z-index:10; background:rgba(3,5,10,.94); display:flex; flex-direction:column; padding:14px 16px 0; }
+  #search .head { display:flex; gap:12px; }
+  #q { flex:1; height:64px; border-radius:14px; border:2px solid rgba(var(--acc-rgb),.6); background:#0a121e; color:#fff; font-size:26px;
+    padding:0 18px; outline:none; user-select:text; -webkit-user-select:text; }
+  #q::placeholder { color:#5d6a80; }
+  #search .btn { height:64px; }
+  #res { flex:1; overflow-y:auto; margin-top:10px; -webkit-overflow-scrolling:touch; }
+  #res .it { display:flex; align-items:center; min-height:62px; padding:8px 14px; border-bottom:1px solid rgba(80,130,200,.14); }
+  #res .it:active { background:#11233a; }
+  #res .ico { width:40px; height:40px; border-radius:10px; background:#10213a; color:var(--acc); display:flex; align-items:center;
+    justify-content:center; font-size:20px; margin-right:14px; flex:0 0 auto; }
+  #res .it b { font-size:21px; font-weight:600; display:block; }
+  #res .it small { color:var(--dim); font-size:14px; }
+  #res .it .d { margin-left:auto; color:var(--dim); font-size:17px; padding-left:12px; }
+  #res .msg { color:var(--dim); font-size:18px; padding:20px 14px; }
+  #res mark { background:none; color:var(--acc); }
+
+  /* Recentrar del mapa: arriba de la calle actual */
+  .mv-recenter { left:50%; right:auto !important; bottom:72px !important; transform:translateX(-50%); }
+  .mv-recenter:active { transform:translateX(-50%) scale(.96); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="map"></canvas>
+
+  <div class="hud panel" id="man" hidden>
+    <div class="row">
+      <div id="manArrow"></div>
+      <div style="min-width:0">
+        <div id="manDist" class="num">—</div>
+        <div id="manText"></div>
+      </div>
+    </div>
+    <div id="manName"></div>
+    <div class="bar"><i id="manBar"></i></div>
+    <div id="rally" hidden></div>
+  </div>
+  <div class="hud panel" id="then" hidden><span>Luego</span><span class="mini" id="thenArrow"></span><b id="thenName"></b><span class="num" id="thenDist"></span></div>
+
+  <div class="hud" id="tools">
+    <button class="btn acc" id="btnSearch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><circle cx="10" cy="10" r="7"/><path d="M15.5 15.5L22 22"/></svg>Destino</button>
+    <a class="btn" id="btnSplit" href="dividida.html">♫ Música + Mapa</a>
+    <a class="btn home" href="./" aria-label="Inicio">⌂</a>
+  </div>
+  <div class="hud panel" id="voice">
+    <span class="lbl">Voz</span>
+    <button data-v="normal">Normal</button>
+    <button data-v="copiloto">Copiloto</button>
+    <button data-v="off">Silencio</button>
+  </div>
+  <button class="hud btn" id="cancel" hidden>✕ Cancelar ruta</button>
+
+  <div class="hud" id="drive">
+    <div class="panel" id="speedBox"><div id="speed" class="num">—</div><small>KM/H</small></div>
+    <div id="limit" class="num" hidden>—</div>
+  </div>
+  <div class="hud panel" id="street" hidden></div>
+  <div class="hud panel" id="trip">
+    <div id="tripEta" hidden><b class="num" id="eta">--:--</b><small>Llegada</small></div>
+    <div id="tripRemain" hidden><b class="num" id="remain">—</b><small id="remainTime">Restante</small></div>
+    <div id="clockBox"><b class="num" id="clock">--:--</b><small>Hora</small></div>
+  </div>
+
+  <div class="hud panel" id="busy" hidden><i></i><span id="busyText">Calculando ruta…</span></div>
+  <div class="hud panel" id="status" hidden><h2 id="stTitle"></h2><p id="stText"></p></div>
+
+  <div class="hud panel" id="pick" hidden>
+    <h3>¿Ir aquí?</h3>
+    <p id="pickText"></p>
+    <div class="acts"><button class="btn go" id="pickGo">➤ Ir aquí</button><button class="btn" id="pickNo">Cancelar</button></div>
+  </div>
+</div>
+
+<div id="search" hidden>
+  <div class="head">
+    <input id="q" type="search" placeholder="Buscar calle o lugar…" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
+    <button class="btn" id="searchClose">Cerrar</button>
+  </div>
+  <div id="res"></div>
+</div>
+
+<script type="module" src="mapa.js"></script>
+</body>
+</html>
