@@ -219,29 +219,47 @@ async def on_connect(reader, writer):
 
 def local_ips():
     """IPs IPv4 de este equipo (sin loopback), para saber qué dirección abrir en el estéreo."""
+    # Nunca debe tumbar el hub: si no se pueden leer las IPs, simplemente no se muestran.
+    try:
+        import fcntl  # noqa: F401  (solo existe en Linux / Android)
+    except ImportError:
+        return _ips_windows()
+    try:
+        return _ips_linux()
+    except Exception:
+        return []
+
+
+def _ips_linux():
+    # SIOCGIFCONF (ioctl clásico). En Android 11+ Termux no puede usar netlink
+    # (socket.if_nameindex da "Permission denied"), pero este ioctl sí funciona.
+    import array
+    import fcntl
+    import socket
+    ifreq = 40 if struct.calcsize("P") == 8 else 32  # tamaño de struct ifreq en 64 / 32 bits
+    size = ifreq * 64
+    buf = array.array("B", bytes(size))
+    addr = buf.buffer_info()[0]
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        res = fcntl.ioctl(s.fileno(), 0x8912, struct.pack("iP", size, addr))  # SIOCGIFCONF
+    used = struct.unpack("iP", res)[0]
+    data = buf.tobytes()
     found = []
-    try:  # Linux / Android (Termux): ioctl por interfaz, funciona sin root
-        import fcntl
-        import socket
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        for _, name in socket.if_nameindex():
-            try:
-                req = struct.pack("256s", name[:15].encode())
-                ip = socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915, req)[20:24])  # SIOCGIFADDR
-            except OSError:
-                continue
-            if not ip.startswith("127."):
-                found.append((name, ip))
-        s.close()
-    except ImportError:  # Windows
-        import socket
-        try:
-            for ip in sorted({a[4][0] for a in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)}):
-                if not ip.startswith("127."):
-                    found.append(("red", ip))
-        except OSError:
-            pass
+    for off in range(0, used, ifreq):
+        name = data[off:off + 16].split(b"\0", 1)[0].decode(errors="replace")
+        ip = socket.inet_ntoa(data[off + 20:off + 24])  # sockaddr_in: familia(2) + puerto(2) + IP
+        if not ip.startswith("127."):
+            found.append((name, ip))
     return found
+
+
+def _ips_windows():
+    import socket
+    try:
+        ips = sorted({a[4][0] for a in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)})
+    except OSError:
+        return []
+    return [("red", ip) for ip in ips if not ip.startswith("127.")]
 
 
 async def main():
