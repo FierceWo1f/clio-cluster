@@ -5,6 +5,7 @@ import { describeDtc, decodeDtc, SYSTEM_NAMES } from './dtc.js';
 import { SportGauge, GaugeAnimator } from './gauges.js';
 import { LiveChart, SERIES_COLORS } from './chart.js';
 import { DEFAULT_GEAR_RATIOS } from './simulator.js';
+import { StereoLink } from './link.js';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -59,6 +60,9 @@ const state = {
   vin: null,
   wakeLock: null,
 };
+
+// Enlace con la pantalla del estéreo (solo si la app se abre desde el hub). Ver js/link.js
+let stereo = null;
 
 // PIDs que necesita el cluster y cada cuánto (ms) leerlos. 0 = lo más rápido posible.
 const CLUSTER_PIDS = {
@@ -158,6 +162,7 @@ function applyMode() {
     b.setAttribute('aria-checked', on);
   });
   $('#modeHint').innerHTML = m.hint(settings);
+  publishStereoConfig();
 }
 
 function setMode(mode) {
@@ -633,9 +638,45 @@ function renderLegend() {
   }).join('');
 }
 
+// ---------- pantalla del estéreo ----------
+// Configuración del cluster (cambia poco): se manda al conectar una pantalla y al cambiar de modo/ajustes.
+function publishStereoConfig() {
+  if (!stereo) return;
+  const m = MODES[settings.mode] || MODES.normal;
+  stereo.publish({
+    t: 'cfg', mode: settings.mode, modeLabel: m.label, modeColor: m.color, accent: settings.accent,
+    bands: m.bands(settings), shift: m.shift(settings), aux: m.aux,
+    tachMax: settings.tachMax, redline: settings.redline, speedMax: settings.speedMax, tempAlert: settings.tempAlert,
+  });
+}
+
+// Estado del auto (10 veces por segundo). Los valores sin dato se omiten (undefined no viaja en JSON).
+function stereoSnapshot() {
+  const rpm = fresh('0C');
+  const speed = fresh('0D');
+  const gear = state.values.GEAR ?? '—';
+  const aux = (MODES[settings.mode] || MODES.normal).aux;
+  const lh = fresh('FUEL_LH');
+  const { out, tt } = computeAlerts();
+  return {
+    t: 'obd', on: state.connected && state.ecuOk, src: state.transport?.label || '', hz: +state.hz.toFixed(1),
+    rpm, speed, gear, arrow: shiftArrow(rpm, gear),
+    cool: fresh('05', 8000), volt: fresh('RV', 8000), thr: fresh('11'), load: fresh('04'), iat: fresh('0F', 8000),
+    lh, l100: lh !== undefined && speed > 3 ? (lh / speed) * 100 : undefined,
+    aux: aux.key === 'FUEL' ? (speed > 3 ? fresh('FUEL_L100') : undefined) : fresh(aux.key, 8000),
+    trip: { km: state.trip.km, ms: state.trip.ms, fuel: state.trip.fuel },
+    alerts: out, tt,
+  };
+}
+
 // ---------- bucle de renderizado ----------
+let stereoTick = 0;
 setInterval(() => {
   derive();
+  if (stereo) {
+    stereo.publish(stereoSnapshot());
+    if (++stereoTick % 30 === 0) publishStereoConfig(); // cada 3 s por si una pantalla se perdió algo
+  }
   if (state.view === 'cluster') renderCluster();
   else if (state.view === 'sensores') renderSensors();
   else if (state.view === 'graficas') renderLegend();
@@ -1188,6 +1229,22 @@ window.addEventListener('appinstalled', () => toast('¡App instalada! Ya puedes 
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW no registrado', err));
+}
+
+{
+  const link = new StereoLink({
+    onCommand: m => { if (m.a === 'mode') setMode(m.v); },
+    onStatus: ({ open, screens }) => {
+      const el = $('#stereoState');
+      if (el) {
+        el.hidden = !open;
+        el.textContent = screens ? 'Estéreo conectado' : 'Hub sin estéreo';
+        el.classList.toggle('on', screens > 0);
+      }
+    },
+  });
+  link.onScreen = () => publishStereoConfig();
+  link.start().then(ok => { if (ok) stereo = link; });
 }
 
 // =====================================================================

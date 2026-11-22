@@ -64,6 +64,9 @@ button, input, select { font: inherit; color: inherit; }
 .dot.busy { background: var(--warn); animation: pulse 1s infinite; }
 .hz { font-size: 12px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 20px; }
 .hz:empty { display: none; }
+.hz.stereo { color: var(--muted, #8b96a8); }
+.hz.stereo.on { color: #22c55e; border-color: #22c55e; }
+.hz[hidden] { display: none; }
 .actions { display: flex; gap: 8px; }
 @keyframes pulse { 50% { opacity: .35; } }
 

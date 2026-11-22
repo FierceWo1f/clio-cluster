@@ -11,7 +11,7 @@
   body { display:flex; flex-direction:column; padding:20px 24px; }
   .top { display:flex; justify-content:space-between; align-items:flex-start; }
   #clock { font-size:96px; font-weight:200; line-height:1; letter-spacing:-2px; }
-  #date { color:var(--dim); font-size:22px; margin-top:6px; text-transform:capitalize; }
+  #date { color:var(--dim); font-size:22px; margin-top:6px; }
   #link { display:flex; align-items:center; background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:8px 16px; font-size:16px; color:var(--dim); }
   #link i { margin-right:8px; width:10px; height:10px; border-radius:50%; background:var(--warn); display:inline-block; }
   #link.ok i { background:var(--ok); }
@@ -36,7 +36,7 @@
   </div>
 
   <div class="grid">
-    <div class="tile soon"><span class="ico">⏱</span><div><b>Cluster</b><br><small>RPM, velocidad, temperatura</small></div></div>
+    <a class="tile" href="cluster.html"><span class="ico">⏱</span><div><b>Cluster</b><br><small>RPM, velocidad, temperatura</small></div></a>
     <div class="tile soon"><span class="ico">♫</span><div><b>Música</b><br><small>Visualizaciones y letras</small></div></div>
     <div class="tile soon"><span class="ico">➤</span><div><b>Mapa</b><br><small>Navegación sin datos</small></div></div>
     <a class="tile" href="/tools/linktest/"><span class="ico">⇄</span><div><b>Prueba de enlace</b><br><small>WiFi, pantalla, teclas</small></div></a>
@@ -60,7 +60,7 @@
   function tick() {
     var d = new Date();
     clock.textContent = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
-    try { date.textContent = d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }); }
+    try { var t = d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }); date.textContent = t.charAt(0).toUpperCase() + t.slice(1); }
     catch (e) { date.textContent = d.toDateString(); }
   }
   tick(); setInterval(tick, 1000);

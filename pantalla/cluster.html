@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Cluster</title>
+<style>
+  :root {
+    --bg:#07090d; --panel:#10151e; --line:#1e2735; --text:#eef2f7; --dim:#8692a6;
+    --accent:#ff2d55; --accent-rgb:255,45,85; --danger:#ff3b3b; --ok:#22c55e; --amber:#f59e0b;
+  }
+  :root[data-accent="morado"] { --accent:#a855f7; --accent-rgb:168,85,247; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
+  html, body { margin:0; height:100%; overflow:hidden; color:var(--text); font-family:system-ui, Roboto, sans-serif;
+    background:radial-gradient(ellipse at 35% 40%, #111826 0%, var(--bg) 65%); }
+  body { display:flex; flex-direction:column; padding:10px 14px 12px; }
+
+  /* barra superior */
+  .top { display:flex; align-items:center; height:48px; }
+  .home { width:48px; height:44px; border-radius:10px; border:1px solid var(--line); background:var(--panel); color:var(--text);
+    font-size:24px; display:flex; align-items:center; justify-content:center; text-decoration:none; margin-right:12px; }
+  .modes { display:flex; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:3px; }
+  .modes button { background:none; border:0; color:var(--dim); font:700 15px system-ui, sans-serif; padding:9px 18px; border-radius:9px; letter-spacing:.5px; }
+  .modes button.on { color:#fff; background:#253047; }
+  .modes button.on[data-mode="eco"] { background:var(--ok); color:#04200f; }
+  .modes button.on[data-mode="sport"] { background:var(--accent); box-shadow:0 0 14px rgba(var(--accent-rgb), .6); }
+  .tts { display:flex; margin-left:16px; }
+  .tt { font:700 12px system-ui, sans-serif; color:#2b3546; border:1px solid #1c2433; border-radius:6px; padding:5px 8px; margin-right:6px; letter-spacing:.5px; }
+  .tt.amber { color:var(--amber); border-color:var(--amber); box-shadow:0 0 8px rgba(245,158,11,.4); }
+  .tt.red { color:var(--danger); border-color:var(--danger); box-shadow:0 0 8px rgba(255,59,59,.5); }
+  .tt.blue { color:#3b9bff; border-color:#3b9bff; }
+  .tt.accent { color:var(--accent); border-color:var(--accent); }
+  .right { margin-left:auto; display:flex; align-items:center; }
+  #clock { font-size:26px; font-weight:300; margin-left:14px; }
+  #src { color:var(--dim); font-size:13px; }
+
+  /* luces de cambio */
+  .shift { display:flex; justify-content:center; margin:6px 0 2px; }
+  .shift span { width:34px; height:10px; border-radius:5px; background:#161c27; margin:0 4px; }
+  .shift span.g { background:var(--ok); box-shadow:0 0 10px var(--ok); }
+  .shift span.y { background:#facc15; box-shadow:0 0 10px #facc15; }
+  .shift span.r { background:var(--danger); box-shadow:0 0 10px var(--danger); }
+  .shift.flash span { animation:flash .14s infinite alternate; background:var(--danger); }
+  @keyframes flash { to { opacity:.25; } }
+
+  /* relojes y datos */
+  .main { flex:1; display:flex; min-height:0; }
+  .tach { flex:0 0 auto; width:470px; position:relative; }
+  .tach canvas { width:100%; height:100%; display:block; }
+  .side { flex:0 0 auto; width:210px; display:flex; flex-direction:column; justify-content:space-around; }
+  .side canvas { width:200px; height:200px; display:block; margin:0 auto; }
+  .cards { flex:1; display:flex; flex-direction:column; justify-content:center; padding-left:12px; }
+  .card { background:rgba(16,21,30,.85); border:1px solid var(--line); border-radius:12px; padding:9px 14px; margin:5px 0; display:flex; align-items:baseline; justify-content:space-between; }
+  .card small { color:var(--dim); font-size:13px; text-transform:uppercase; letter-spacing:.6px; }
+  .card b { font-size:26px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .card i { font-style:normal; color:var(--dim); font-size:13px; margin-left:4px; }
+
+  #alerts { min-height:0; }
+  #alerts div { background:rgba(255,59,59,.14); border:1px solid var(--danger); color:#ffd0d0; border-radius:10px; padding:8px 14px; margin-top:6px; font-size:17px; }
+  #alerts div.warn { background:rgba(245,158,11,.12); border-color:var(--amber); color:#ffe3b0; }
+
+  /* sin datos */
+  #wait { position:absolute; top:0; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center; background:rgba(7,9,13,.82); z-index:5; }
+  #wait[hidden] { display:none; }
+  #wait .box { text-align:center; max-width:640px; }
+  #wait h2 { font-weight:500; margin:0 0 10px; font-size:28px; }
+  #wait p { color:var(--dim); font-size:17px; line-height:1.5; margin:0; }
+  #wait a { display:inline-block; margin-top:22px; color:var(--text); border:1px solid var(--line); background:var(--panel); padding:10px 22px; border-radius:10px; text-decoration:none; font-size:17px; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <a class="home" href="./" aria-label="Inicio">⌂</a>
+    <div class="modes" id="modes">
+      <button data-mode="eco">ECO</button>
+      <button data-mode="normal">NORMAL</button>
+      <button data-mode="sport">SPORT</button>
+    </div>
+    <div class="tts">
+      <span class="tt" id="ttMil">CHECK</span>
+      <span class="tt" id="ttTemp">TEMP</span>
+      <span class="tt" id="ttBatt">BAT</span>
+      <span class="tt" id="ttShift">SHIFT</span>
+    </div>
+    <div class="right"><span id="src"></span><span id="clock">--:--</span></div>
+  </div>
+
+  <div class="shift" id="shift"></div>
+
+  <div class="main">
+    <div class="tach"><canvas id="gTach"></canvas></div>
+    <div class="side">
+      <canvas id="gTemp"></canvas>
+      <canvas id="gAux"></canvas>
+    </div>
+    <div class="cards">
+      <div class="card"><small>Consumo</small><span><b id="fuelInst">—</b><i id="fuelInstUnit">L/100km</i></span></div>
+      <div class="card"><small>Promedio</small><span><b id="fuelAvg">—</b><i>L/100km</i></span></div>
+      <div class="card"><small>Viaje</small><span><b id="tripKm">0.0</b><i>km</i></span></div>
+      <div class="card"><small>Tiempo</small><span><b id="tripTime">0:00</b></span></div>
+      <div class="card"><small>Batería</small><span><b id="volt">—</b><i>V</i></span></div>
+      <div class="card"><small>Acelerador</small><span><b id="thr">—</b><i>%</i></span></div>
+    </div>
+  </div>
+  <div id="alerts"></div>
+
+  <div id="wait">
+    <div class="box">
+      <h2 id="waitTitle">Esperando datos del auto…</h2>
+      <p id="waitText">En el teléfono abre <b>http://localhost:8080</b> en Chrome (la app Clio Cluster servida por el hub)
+        y conecta el ELM327, o usa el <b>Simulador</b> para probar.</p>
+      <a href="./">Volver al inicio</a>
+    </div>
+  </div>
+
+<script type="module" src="cluster.js"></script>
+</body>
+</html>
