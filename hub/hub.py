@@ -217,6 +217,33 @@ async def on_connect(reader, writer):
         pass
 
 
+def local_ips():
+    """IPs IPv4 de este equipo (sin loopback), para saber qué dirección abrir en el estéreo."""
+    found = []
+    try:  # Linux / Android (Termux): ioctl por interfaz, funciona sin root
+        import fcntl
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        for _, name in socket.if_nameindex():
+            try:
+                req = struct.pack("256s", name[:15].encode())
+                ip = socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915, req)[20:24])  # SIOCGIFADDR
+            except OSError:
+                continue
+            if not ip.startswith("127."):
+                found.append((name, ip))
+        s.close()
+    except ImportError:  # Windows
+        import socket
+        try:
+            for ip in sorted({a[4][0] for a in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)}):
+                if not ip.startswith("127."):
+                    found.append(("red", ip))
+        except OSError:
+            pass
+    return found
+
+
 async def main():
     try:
         sys.stdout.reconfigure(line_buffering=True)  # ver el log en vivo aunque se redirija
@@ -227,8 +254,10 @@ async def main():
     ap.add_argument("--port", type=int, default=8080)
     args = ap.parse_args()
     server = await asyncio.start_server(on_connect, args.host, args.port, limit=MAX_HEADER)
-    print(f"Hub listo en http://{args.host}:{args.port}/  (carpeta {ROOT})")
-    print(f"Prueba de enlace: http://localhost:{args.port}/tools/linktest/   Ctrl+C para salir")
+    print(f"Hub listo (carpeta {ROOT})   Ctrl+C para salir")
+    print(f"  En este equipo:  http://localhost:{args.port}/tools/linktest/")
+    for name, ip in local_ips():
+        print(f"  Desde el estéreo ({name}):  http://{ip}:{args.port}/tools/linktest/")
     async with server:
         await server.serve_forever()
 

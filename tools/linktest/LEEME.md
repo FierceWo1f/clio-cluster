@@ -1,63 +1,66 @@
 # Fase 0: prueba de enlace teléfono ↔ estéreo
 
-Objetivo: medir en el auto si conviene **WiFi** o **Bluetooth** para mandar los datos del teléfono (OBD, GPS y música)
-a la pantalla del estéreo. Además se revisa qué tan rápido dibuja el estéreo y si los botones del volante llegan al navegador.
+Objetivo: comprobar que el estéreo puede mostrar datos que vienen del teléfono, y medir qué tan rápido dibuja el estéreo
+y si los botones del volante llegan al navegador.
 
-Todo se hace con la página `tools/linktest/`, que sirve el hub (`hub/hub.py`, solo Python estándar).
+**Esquema:** el estéreo no instala nada, porque no tiene USB ni microSD.
+- Todo corre en el **teléfono**: Termux con el hub, y más adelante la app motor (OBD, GPS y música).
+- El estéreo solo abre una página en su Chrome.
+- Los dos se conectan por el **hotspot del teléfono**. Es una red local: **no necesita datos móviles** y casi no
+  usa ancho de banda (unos KB/s), así que basta con una señal débil a un metro de distancia.
+
+```
+TELÉFONO  Termux: python hub/hub.py  ──hotspot WiFi (sin datos)──►  ESTÉREO  Chrome: http://<ip-teléfono>:8080/
+```
+
 Al terminar, la pestaña **Reporte** genera un texto para pegarlo en el chat.
 
 ## 1. Probar en la PC (opcional)
 
-Doble clic en `hub.bat`, luego abre dos ventanas en `http://localhost:8080/tools/linktest/`:
+Doble clic en `hub.bat` y abre dos ventanas en `http://localhost:8080/tools/linktest/`:
 en una elige **WiFi → Receptor** y en la otra **WiFi → Emisor**.
 
-## 2. Preparar el estéreo (una vez)
+## 2. Preparar el teléfono (una vez)
 
-1. Instala **Termux** con el APK oficial de GitHub (no hace falta F-Droid). En el Chrome del estéreo abre
-   <https://github.com/termux/termux-app/releases/latest> y descarga **`termux-app_v…+github-debug_armeabi-v7a.apk`**
-   (el estéreo es ARM de 32 bits). Si no estás seguro, usa la versión `universal`.
-   - Android pedirá permitir **"instalar apps desconocidas"** para Chrome. Acéptalo solo para esta instalación.
-   - Si ya tienes Termux de la Play Store, desinstálalo primero. Las versiones de GitHub y Play Store tienen firmas distintas y no se mezclan.
-   - Opcional, para que el hub arranque solo al encender el estéreo: **Termux:Boot** desde
-     <https://github.com/termux/termux-boot/releases/latest>. Debe ser también la versión de GitHub.
-2. En Termux:
+1. Instala **Termux** con el APK oficial de <https://github.com/termux/termux-app/releases/latest>
+   (`…github-debug_arm64-v8a.apk`, o `universal` si no estás seguro). Android pedirá permitir "instalar apps desconocidas".
+2. En Termux, con datos o WiFi de casa:
    ```sh
    pkg install python git
    git clone -b fase0-enlace https://github.com/FierceWo1f/clio-cluster.git
-   cd clio-cluster
-   python hub/hub.py
    ```
-3. Abre Chrome en el estéreo con `http://localhost:8080/tools/linktest/`.
-   - **Equipo**: anota la versión de Chrome, si dice "Web Bluetooth: sí" y la GPU.
+3. Para actualizar más adelante: `cd clio-cluster && git pull`.
+
+## 3. En el auto
+
+1. En el teléfono, activa el **hotspot (Zona Wi-Fi)**. Los datos móviles pueden estar apagados.
+2. En el estéreo, conéctate a esa red WiFi. Si avisa "sin internet", elige mantener la conexión.
+3. En Termux:
+   ```sh
+   cd clio-cluster && python hub/hub.py
+   ```
+   El hub muestra las direcciones disponibles. Usa la de la interfaz del hotspot (`ap0`, `swlan0`, `wlan1`…),
+   que se ve como `http://192.168.x.x:8080/tools/linktest/`.
+4. En el **Chrome del estéreo**, abre esa dirección y guárdala en favoritos.
+   - **Equipo**: muestra la versión de Chrome, si tiene "Web Bluetooth" y la GPU.
    - **Pantalla**: toca "Correr las tres" (tarda ~25 s).
    - **Teclas**: presiona los botones del volante.
-
-## 3. Prueba WiFi
-
-1. En el estéreo: Ajustes → Red → **Punto de acceso WiFi** (hotspot) activado. No necesita internet ni SIM.
-2. Conecta el teléfono a esa red. Si dice "sin internet", elige mantener la conexión; tus datos móviles siguen funcionando.
-3. En el estéreo: página de prueba → **WiFi → Receptor**.
-4. En el teléfono, abre `http://192.168.43.1:8080/tools/linktest/`. Si no carga, busca la IP del estéreo en
-   Termux con `ip addr`. Luego toca **WiFi → Emisor** a 30 Hz.
-5. Déjalo 1–2 minutos **con música sonando por Bluetooth** y con el ELM327 conectado a la app del cluster.
+   - **WiFi → Receptor**.
+5. En el **teléfono**, abre en Chrome `http://localhost:8080/tools/linktest/` y toca **WiFi → Emisor** a 30 Hz.
+   Déjalo 1–2 minutos **con música sonando por Bluetooth**.
 6. Toca **Detener** en los dos y copia el **Reporte** de cada uno.
 
 Valores buenos: RTT p95 < 50 ms, hueco OBD máx < 200 ms y sin cortes en la música.
 
-## 4. Prueba Bluetooth (sin programar nada)
+## Si la señal WiFi del estéreo es mala
 
-Solo confirma que el estéreo puede conectarse al teléfono por BLE desde el navegador.
+Estos estéreos traen una **antena WiFi** (un cable negro delgado, a veces con un conector pequeño) y otra de **GPS**
+entre los cables de atrás. Si la antena WiFi quedó desconectada o enrollada detrás del tablero, la señal es muy débil.
+Revisa que esté conectada y fuera del metal.
 
-1. En el teléfono, instala **nRF Connect for Mobile** (Nordic).
-2. Menú ☰ → **Configure GATT server** → agrega la configuración de ejemplo con **Nordic UART Service**.
-3. Pestaña **Advertiser** → crea un anuncio que incluya el servicio NUS (`6E400001-…`) y actívalo.
-4. En el estéreo (página abierta desde `localhost`): **Bluetooth → Conectar** y elige el teléfono.
-5. En nRF Connect, en la conexión entrante, manda un valor (texto) a la característica **TX** (`6E400003-…`).
-   Debe aparecer en la página del estéreo. "Enviar hola" debe llegar a la característica RX del teléfono.
+## Bluetooth (más adelante)
 
-Si esto funciona, el siguiente paso es una app BLE mínima en el teléfono que mande datos al mismo ritmo que la prueba WiFi,
-para comparar los dos enlaces con música sonando. La página del estéreo ya responde a sus pings (`P<id>` → `Q<id>`).
-
-## Qué mandar de regreso
-
-El texto de **Reporte** del estéreo y del teléfono, más tus notas: si la música se cortó, si el hotspot funcionó, etc.
+Web Bluetooth solo funciona en páginas "seguras" (https o localhost). Como el estéreo abre la página del teléfono por
+`http://192.168…`, primero hay que activar en el estéreo `chrome://flags/#unsafely-treat-insecure-origin-as-secure`
+con esa dirección. Después se prueba con **nRF Connect** en el teléfono como servidor "Nordic UART". La pestaña
+Bluetooth de la página ya está lista para eso.
