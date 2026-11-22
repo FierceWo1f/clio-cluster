@@ -13,12 +13,17 @@ en una elige **WiFi → Receptor** y en la otra **WiFi → Emisor**.
 
 ## 2. Preparar el estéreo (una vez)
 
-1. Instala **Termux** desde F-Droid (la versión de Play Store ya no se actualiza) y, si quieres que el hub arranque solo,
-   **Termux:Boot**.
+1. Instala **Termux** con el APK oficial de GitHub (no hace falta F-Droid). En el Chrome del estéreo abre
+   <https://github.com/termux/termux-app/releases/latest> y descarga **`termux-app_v…+github-debug_armeabi-v7a.apk`**
+   (el estéreo es ARM de 32 bits). Si no estás seguro, usa la versión `universal`.
+   - Android pedirá permitir **"instalar apps desconocidas"** para Chrome. Acéptalo solo para esta instalación.
+   - Si ya tienes Termux de la Play Store, desinstálalo primero. Las versiones de GitHub y Play Store tienen firmas distintas y no se mezclan.
+   - Opcional, para que el hub arranque solo al encender el estéreo: **Termux:Boot** desde
+     <https://github.com/termux/termux-boot/releases/latest>. Debe ser también la versión de GitHub.
 2. En Termux:
    ```sh
    pkg install python git
-   git clone https://github.com/FierceWo1f/clio-cluster.git
+   git clone -b fase0-enlace https://github.com/FierceWo1f/clio-cluster.git
    cd clio-cluster
    python hub/hub.py
    ```
