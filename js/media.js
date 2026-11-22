@@ -726,7 +726,7 @@ export class MusicPlayer {
   _sendPlay() {
     const a = this.audio;
     this._pub({
-      t: 'play', id: this.trackId, playing: !a.paused && this.cur >= 0, pos: +(a.currentTime || 0).toFixed(2),
+      t: 'play', id: this.trackId, idx: this.cur, playing: !a.paused && this.cur >= 0, pos: +(a.currentTime || 0).toFixed(2),
       dur: +(this._dur() || 0).toFixed(2), shuffle: this.shuffle, repeat: this.repeat, vol: +this.vol.toFixed(3),
     });
     this._updatePosition();

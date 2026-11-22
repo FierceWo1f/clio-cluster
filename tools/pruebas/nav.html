@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prueba de navegación</title>
+  <link rel="stylesheet" href="../../css/app.css">
+  <style>
+    body { padding: 16px; }
+    #log { font: 12px/1.4 ui-monospace, monospace; color: var(--muted); white-space: pre-wrap; max-height: 220px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <h2>Prueba de GPS y navegación</h2>
+  <p style="color:var(--muted)">Abre esta página desde el hub (<code>http://localhost:8080/tools/pruebas/nav.html</code>).
+    Los mensajes al estéreo solo salen si hay alguna pantalla conectada.</p>
+  <div id="navMount"></div>
+  <div class="card"><h3>Registro</h3><div id="log"></div></div>
+  <div id="toast" class="toast"></div>
+
+  <script type="module">
+    import { StereoLink } from '../../js/link.js';
+    import { Gps } from '../../js/gps.js';
+    import { Nav } from '../../js/nav.js';
+
+    const logEl = document.getElementById('log');
+    const log = s => {
+      logEl.textContent = `${new Date().toLocaleTimeString('es-MX')}  ${s}\n` + logEl.textContent.slice(0, 6000);
+    };
+    let toastTimer;
+    const toast = (msg, err = false) => {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast show' + (err ? ' err' : '');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.className = 'toast'; }, 4000);
+      log((err ? 'AVISO! ' : 'aviso: ') + msg);
+    };
+
+    const modules = {};
+    window.__duck = [];
+    // música falsa: solo registra las llamadas a duck()
+    modules.music = { duck(on) { window.__duck.push(on); log('music.duck(' + on + ')'); } };
+
+    const link = new StereoLink({
+      onCommand: m => {
+        log('comando ' + JSON.stringify(m));
+        if (String(m.a).startsWith('nav.')) modules.nav?.command(m);
+      },
+      onStatus: s => log(`hub: ${s.open ? 'conectado' : 'sin hub'}, pantallas: ${s.screens}`),
+    });
+    link.onScreen = () => { modules.gps?.resend(); modules.nav?.resend(); };
+
+    const ctx = {
+      publish: msg => link.publish(msg),
+      publishBinary: buf => link.publishBinary(buf),
+      obd: () => ({ on: false }),
+      toast,
+      modules,
+    };
+    modules.gps = new Gps(ctx);
+    modules.nav = new Nav(ctx);
+    modules.nav.mount(document.getElementById('navMount'));
+    window.__modules = modules;
+    link.start().then(ok => log(ok ? 'hub encontrado' : 'no hay hub en este origen'));
+  </script>
+</body>
+</html>

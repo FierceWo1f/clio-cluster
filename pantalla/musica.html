@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Música</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg:#07090d; --text:#eef2f7; --dim:#8692a6; --line:#1e2735;
+    --acc:#3fd0ff; --acc-rgb:63,208,255; --lcd:#8ff7ff; --lcd-dim:#2f6f78; --lcd-bg:#031317;
+    /* cromo oscuro */
+    --chrome:linear-gradient(180deg,#6b7586 0%,#3a414f 9%,#232833 48%,#181c24 52%,#262c38 100%);
+    --cap:linear-gradient(180deg,#465063 0%,#2a313e 46%,#1a1f28 54%,#232a35 100%);
+    --cap-on:linear-gradient(180deg,#14181f 0%,#1c222c 50%,#262d3a 100%);
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none; }
+  html, body { margin:0; height:100%; overflow:hidden; color:var(--text); font-family:system-ui, Roboto, sans-serif;
+    background:radial-gradient(ellipse at 50% 30%, #121a28 0%, var(--bg) 70%); }
+  button { font:inherit; color:inherit; }
+  ::-webkit-scrollbar { width:6px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:#3a4352; border-radius:3px; }
+
+  /* ---------- chasis ---------- */
+  .chassis { position:absolute; left:6px; top:6px; right:6px; bottom:6px; border-radius:20px; padding:10px;
+    display:flex; flex-direction:column; background:var(--chrome);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.45), inset 0 -1px 0 rgba(0,0,0,.6), inset 0 0 0 1px rgba(255,255,255,.06), 0 6px 20px rgba(0,0,0,.7); }
+  .chassis::before { content:''; position:absolute; left:18px; right:18px; top:2px; height:20px; border-radius:12px 12px 40px 40px;
+    background:linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0)); pointer-events:none; }
+
+  /* ---------- botones cápsula ---------- */
+  .cap { height:48px; min-width:48px; padding:0 16px; border-radius:999px; border:1px solid #07090d; background:var(--cap);
+    display:inline-flex; align-items:center; justify-content:center; color:#d8e0ea; text-decoration:none; font-size:15px; font-weight:600;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.4), 0 2px 3px rgba(0,0,0,.55); position:relative; flex:0 0 auto; }
+  .cap.ico { width:48px; padding:0; font-size:22px; }
+  .cap:active, .cap.on { background:var(--cap-on); box-shadow:inset 0 2px 4px rgba(0,0,0,.7), 0 1px 0 rgba(255,255,255,.12); }
+  .cap.on { color:var(--acc); }
+  .cap .led { width:7px; height:7px; border-radius:50%; background:#1b2430; box-shadow:inset 0 1px 1px rgba(0,0,0,.6); }
+  .cap.on .led { background:var(--acc); box-shadow:0 0 6px var(--acc); }
+  .cap svg { width:22px; height:22px; fill:currentColor; display:block; }
+
+  /* ---------- barra superior ---------- */
+  .top { display:flex; align-items:center; height:52px; }
+  .lcd { flex:1; min-width:0; height:50px; border-radius:10px; display:flex; align-items:center; padding:0 12px;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0 1px, transparent 1px 3px), radial-gradient(ellipse at 50% 0%, #0b2a30, var(--lcd-bg) 75%);
+    border:1px solid #000; box-shadow:inset 0 2px 6px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.18); color:var(--lcd);
+    font-family:"Roboto Mono", "DejaVu Sans Mono", Consolas, monospace; text-shadow:0 0 6px rgba(143,247,255,.55); }
+  .lcd-time { font-size:30px; font-weight:700; letter-spacing:1px; min-width:96px; text-align:right; font-variant-numeric:tabular-nums; }
+  .lcd-time.paused { animation:blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity:.25; } }
+  .lcd-mid { flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; }
+  .marquee.run { -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 4%, #000 92%, transparent 100%); mask-image:linear-gradient(90deg, transparent 0, #000 4%, #000 92%, transparent 100%); }
+  .marquee { overflow:hidden; white-space:nowrap; font-size:17px; height:22px; line-height:22px; }
+  .marquee span { display:inline-block; padding-right:60px; }
+  .marquee.run span { animation:mq var(--mqd, 12s) linear infinite; }
+  @keyframes mq { from { transform:translateX(0); } to { transform:translateX(-100%); } }
+  .tags { display:flex; font-size:10px; letter-spacing:1.2px; margin-top:2px; color:var(--lcd-dim); text-shadow:none; }
+  .tags span.on { color:var(--lcd); text-shadow:0 0 5px rgba(143,247,255,.6); }
+  .clock { font-size:24px; font-weight:300; min-width:64px; text-align:right; color:#dfe6ef; text-shadow:0 1px 0 #000; }
+
+  /* ---------- zona central ---------- */
+  .mid { flex:1; min-height:0; display:flex; margin:8px 0; }
+  .side { flex:0 0 236px; display:flex; flex-direction:column; min-height:0; }
+  .bezel { border-radius:14px; padding:6px; background:linear-gradient(180deg,#0b0e13,#1b212b); border:1px solid #000;
+    box-shadow:inset 0 1px 3px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.18); }
+  .cover { position:relative; width:224px; height:224px; border-radius:9px; overflow:hidden; margin:0 auto;
+    background:radial-gradient(circle at 50% 50%, #2a3140 0 8%, #0b0d11 9% 12%, #1a1e26 13% 34%, #111318 35% 36%, #1a1e26 37% 58%, #101217 59% 60%, #1b1f27 61%); }
+  .cover img { position:absolute; top:0; left:0; right:0; bottom:0; width:100%; height:100%; object-fit:cover; }
+  .cover img[hidden] { display:none; }
+  .cover::after { content:''; position:absolute; top:0; left:0; right:0; bottom:0; background:linear-gradient(140deg, rgba(255,255,255,.16), rgba(255,255,255,0) 40%); pointer-events:none; }
+  .meta { padding:8px 6px 0; min-height:0; }
+  .meta b { display:block; font-size:19px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 0 #000; }
+  .meta span { display:block; font-size:15px; color:#a9b4c4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+
+  .eq { flex:1; min-height:0; margin-top:8px; display:flex; justify-content:space-between; padding:8px 10px 4px; border-radius:12px;
+    background:linear-gradient(180deg,#141922,#0c0f15); border:1px solid #05070a; box-shadow:inset 0 1px 3px rgba(0,0,0,.8), 0 1px 0 rgba(255,255,255,.1); }
+  .eq div { flex:1; display:flex; flex-direction:column; align-items:center; }
+  .eq i { flex:1; width:4px; border-radius:2px; background:#05070a; box-shadow:0 1px 0 rgba(255,255,255,.1); position:relative; }
+  .eq i b { position:absolute; left:-6px; width:16px; height:8px; border-radius:3px; bottom:0;
+    background:linear-gradient(180deg,#dfe6ef,#7d8797 50%,#4a5262); box-shadow:0 1px 2px rgba(0,0,0,.8);
+    transform:translateY(0); transition:transform .12s linear; }
+  .eq small { font-size:9px; color:#5d6878; margin-top:4px; letter-spacing:.3px; }
+
+  .stage { flex:1; min-width:0; position:relative; border-radius:14px; overflow:hidden; background:#04060a; border:1px solid #000;
+    box-shadow:inset 0 0 0 2px #0d1118, 0 1px 0 rgba(255,255,255,.18); }
+  .stage canvas { position:absolute; top:0; left:0; right:0; bottom:0; width:100%; height:100%; display:block; transition:opacity .4s; }
+  .stage::after { content:''; position:absolute; top:0; left:0; right:0; bottom:0; pointer-events:none; border-radius:14px;
+    background:linear-gradient(170deg, rgba(255,255,255,.07), rgba(255,255,255,0) 30%); box-shadow:inset 0 0 30px rgba(0,0,0,.7); }
+
+  .vizsel { position:absolute; top:8px; right:8px; z-index:3; display:flex; align-items:center; height:48px; border-radius:999px;
+    background:rgba(8,11,16,.62); border:1px solid rgba(255,255,255,.08); }
+  .vizsel button { width:48px; height:48px; border:0; background:none; color:#cfe8f5; font-size:18px; border-radius:50%; }
+  .vizsel button:active { background:rgba(var(--acc-rgb),.2); }
+  .vizsel span { font-size:14px; font-weight:600; color:#dbe7f0; min-width:130px; text-align:center; letter-spacing:.3px; }
+
+  /* letra superpuesta */
+  .lyr-over { position:absolute; left:0; right:0; bottom:0; z-index:2; padding:30px 24px 14px; text-align:center; pointer-events:none;
+    background:linear-gradient(180deg, rgba(4,6,10,0), rgba(4,6,10,.72) 45%); display:none; }
+  .lyr-over div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 2px 4px #000, 0 0 2px #000; }
+  .lyr-over .p, .lyr-over .n { font-size:17px; color:rgba(220,230,240,.55); line-height:24px; }
+  .lyr-over .c { font-size:27px; font-weight:700; color:#fff; line-height:36px; }
+  .lyr-over .c.in { animation:rise .35s ease-out; }
+  @keyframes rise { from { transform:translateY(10px); opacity:.2; } }
+  body.ly-over .lyr-over { display:block; }
+
+  /* letra en pantalla completa (karaoke) */
+  .lyr-full { position:absolute; top:0; left:0; right:0; bottom:0; z-index:2; display:none; overflow:hidden;
+    -webkit-mask-image:linear-gradient(180deg, transparent 0, #000 22%, #000 78%, transparent 100%);
+            mask-image:linear-gradient(180deg, transparent 0, #000 22%, #000 78%, transparent 100%); }
+  .lyr-list { position:absolute; left:0; right:0; top:0; padding:0 60px; text-align:center; transition:transform .5s cubic-bezier(.25,.8,.3,1); will-change:transform; }
+  .lyr-list p { display:table; margin:0 auto; padding:7px 0; font-size:24px; line-height:32px; font-weight:600; color:rgba(200,214,230,.38); transition:color .3s, transform .3s; }
+  .lyr-list p.past { color:rgba(200,214,230,.22); }
+  .lyr-list p.on { color:transparent; font-size:32px; line-height:40px; font-weight:800;
+    background:linear-gradient(90deg, #ffffff 0 50%, rgba(var(--acc-rgb),.55) 50% 100%); background-size:200% 100%; background-position:100% 0;
+    -webkit-background-clip:text; background-clip:text; }
+  @keyframes wipe { from { background-position:100% 0; } to { background-position:0 0; } }
+  .lyr-plain { position:absolute; top:0; left:0; right:0; bottom:0; z-index:2; display:none; overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y;
+    padding:70px 60px 40px; text-align:center; font-size:22px; line-height:34px; color:#dce6f0; white-space:pre-line; background:rgba(4,6,10,.55); }
+  .lyr-plain .hint, .lyr-full .hint { display:block; font-size:13px; color:var(--dim); margin-bottom:14px; letter-spacing:.4px; }
+  body.ly-full .mid .side { display:none; }
+  body.ly-full .stage canvas { opacity:.32; }
+  body.ly-full.ly-sync .lyr-full { display:block; }
+  body.ly-full.ly-plain .lyr-plain { display:block; }
+  .lyr-none { position:absolute; left:0; right:0; bottom:22px; z-index:2; text-align:center; font-size:15px; color:var(--dim); display:none; text-shadow:0 1px 3px #000; }
+  body.ly-full.ly-nolyr .lyr-none, body.ly-over.ly-nolyr .lyr-none { display:block; }
+  body.ly-full.ly-nolyr .lyr-none { top:50%; bottom:auto; font-size:20px; }
+
+  /* aviso (sin teléfono / sin música) */
+  .msg { position:absolute; top:0; left:0; right:0; bottom:0; z-index:4; display:flex; align-items:center; justify-content:center; text-align:center;
+    background:rgba(4,6,10,.68); padding:20px 40px; }
+  .msg[hidden] { display:none; }
+  .msg h2 { margin:0 0 10px; font-size:26px; font-weight:600; }
+  .msg p { margin:0; font-size:17px; line-height:1.5; color:#aab6c6; }
+  .msg .note { font-size:40px; margin-bottom:8px; color:var(--acc); text-shadow:0 0 14px rgba(var(--acc-rgb),.6); }
+
+  /* ---------- parte de abajo ---------- */
+  .bottom { flex:0 0 auto; }
+  .seekrow { display:flex; align-items:center; height:40px; }
+  .seekrow span { font-size:15px; color:#c4cfdc; min-width:52px; font-variant-numeric:tabular-nums; text-shadow:0 1px 0 #000; }
+  .seekrow span:last-child { text-align:right; }
+  .slider { position:relative; flex:1; height:48px; touch-action:none; cursor:pointer; }
+  .slider .rail { position:absolute; left:0; right:0; top:50%; height:10px; margin-top:-5px; border-radius:6px; background:#05070a;
+    box-shadow:inset 0 1px 3px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.14); overflow:hidden; }
+  .slider .fill { position:absolute; left:0; top:0; bottom:0; width:0; border-radius:6px;
+    background:linear-gradient(180deg, #a7ecff, var(--acc) 50%, #1479b8); box-shadow:0 0 8px rgba(var(--acc-rgb),.5); }
+  .slider .knob { position:absolute; top:50%; left:0; width:26px; height:26px; margin:-13px 0 0 -13px; border-radius:50%;
+    background:radial-gradient(circle at 40% 30%, #ffffff, #b7c0cc 40%, #5b6474 75%, #3a414f); box-shadow:0 2px 4px rgba(0,0,0,.8), inset 0 -1px 1px rgba(0,0,0,.4); }
+  .slider.drag .knob { transform:scale(1.2); }
+
+  .ctrls { display:flex; align-items:center; height:64px; margin-top:2px; }
+  .grp { flex:1; display:flex; align-items:center; }
+  .grp.center { flex:0 0 auto; }
+  .grp.right { justify-content:flex-end; }
+  .cap.big { width:64px; height:56px; }
+  .cap.big svg { width:26px; height:26px; }
+  .play { width:68px; height:68px; border-radius:50%; border:1px solid #062033; display:flex; align-items:center; justify-content:center; color:#04263b;
+    background:radial-gradient(circle at 50% 28%, #e3f8ff 0%, #8fe2ff 22%, #1ea7e8 58%, #0b4d78 100%);
+    box-shadow:inset 0 2px 1px rgba(255,255,255,.6), inset 0 -3px 6px rgba(0,30,60,.6), 0 0 16px rgba(var(--acc-rgb),.45), 0 3px 5px rgba(0,0,0,.7); }
+  .play:active { transform:scale(.95); }
+  .play svg { width:30px; height:30px; fill:currentColor; }
+  .vol { display:flex; align-items:center; width:250px; }
+  .vol .slider { height:48px; }
+  .vol .cap.ico { font-size:18px; }
+
+  /* ---------- cajón de la cola ---------- */
+  .scrim { position:fixed; top:0; left:0; right:0; bottom:0; z-index:20; background:rgba(0,0,0,.5); opacity:0; pointer-events:none; transition:opacity .25s; }
+  .scrim.on { opacity:1; pointer-events:auto; }
+  .drawer { position:fixed; top:0; bottom:0; left:0; width:420px; z-index:21; display:flex; flex-direction:column;
+    background:linear-gradient(90deg,#10141b,#171c25); border-right:1px solid #2a3240; box-shadow:6px 0 24px rgba(0,0,0,.7);
+    transform:translateX(-105%); transition:transform .28s cubic-bezier(.3,.8,.3,1); }
+  .drawer.on { transform:translateX(0); }
+  .drawer header { display:flex; align-items:center; padding:10px 12px; border-bottom:1px solid #222a37; }
+  .drawer header b { flex:1; font-size:20px; }
+  .drawer header small { color:var(--dim); font-size:14px; font-weight:400; margin-left:6px; }
+  .qlist { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y; }
+  .qi { display:flex; align-items:center; min-height:58px; padding:6px 14px; border-bottom:1px solid #1a212c; }
+  .qi:active { background:#1d2431; }
+  .qi em { font-style:normal; color:#5d6878; font-size:14px; width:30px; text-align:right; font-variant-numeric:tabular-nums; }
+  .qi div { flex:1; min-width:0; }
+  .qi b, .qi span { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .qi b { font-size:17px; font-weight:600; }
+  .qi span { font-size:14px; color:var(--dim); margin-top:2px; }
+  .qi.cur { background:linear-gradient(90deg, rgba(var(--acc-rgb),.18), rgba(var(--acc-rgb),0)); }
+  .qi.cur em { color:var(--acc); }
+  .qi.cur b { color:var(--acc); }
+  .qempty { padding:30px 20px; color:var(--dim); text-align:center; font-size:16px; line-height:1.5; }
+
+  /* ---------- ajustes ---------- */
+  .sheet { position:fixed; left:50%; top:50%; width:620px; margin-left:-310px; transform:translateY(-50%); z-index:21; padding:20px 24px;
+    border-radius:18px; background:var(--chrome); box-shadow:inset 0 1px 0 rgba(255,255,255,.4), 0 10px 40px rgba(0,0,0,.8); display:none; }
+  .sheet.on { display:block; }
+  .sheet h3 { margin:0 0 4px; font-size:21px; }
+  .sheet p { margin:0 0 14px; color:#a9b4c4; font-size:15px; line-height:1.4; }
+  .sheet .row { display:flex; align-items:center; }
+  .sheet .val { font:700 26px "Roboto Mono", Consolas, monospace; color:var(--lcd); min-width:110px; text-align:center; padding:6px 0; border-radius:8px;
+    background:var(--lcd-bg); border:1px solid #000; box-shadow:inset 0 2px 5px rgba(0,0,0,.9); text-shadow:0 0 6px rgba(143,247,255,.5); }
+  .sheet .end { display:flex; justify-content:flex-end; margin-top:18px; }
+  /* separaciones sin flex-gap (WebView viejo) */
+  .top > * + *, .cap > * + *, .grp > * + * { margin-left:8px; }
+  .lcd-mid { margin-left:12px; } .tags span + span { margin-left:10px; }
+  .stage { margin-left:10px; } .seekrow .slider { margin:0 12px; }
+  .grp > * + * { margin-left:10px; } .grp.center > * + * { margin-left:16px; }
+  .vol > * + * { margin-left:6px; } .drawer header button { margin-left:10px; }
+  .qi > * + * { margin-left:12px; } .sheet .row > * + * { margin-left:12px; } .sheet .end > * + * { margin-left:10px; }
+</style>
+</head>
+<body class="ly-off">
+<div class="chassis">
+  <div class="top">
+    <a class="cap ico" href="./" aria-label="Inicio">⌂</a>
+    <button class="cap" id="btnQueue" aria-label="Cola"><svg viewBox="0 0 24 24"><path d="M3 5h14v2H3zm0 6h14v2H3zm0 6h9v2H3zm13 0 6-3.5v7z"/></svg>Cola</button>
+    <div class="lcd">
+      <div class="lcd-time" id="lcdTime">0:00</div>
+      <div class="lcd-mid">
+        <div class="marquee" id="mq"><span id="mqText">CLIO · MÚSICA</span></div>
+        <div class="tags"><span id="tagPlay">REPRODUCIENDO</span><span id="tagBt">BT</span><span id="tagShuf">ALEATORIO</span><span id="tagRep">REPETIR</span><span id="tagLyr">LETRA</span></div>
+      </div>
+    </div>
+    <a class="cap" id="btnSplit" href="dividida.html">Música + Mapa</a>
+    <button class="cap ico" id="btnCfg" aria-label="Ajustes">⚙</button>
+    <div class="clock" id="clock">--:--</div>
+  </div>
+
+  <div class="mid">
+    <div class="side">
+      <div class="bezel"><div class="cover"><img id="cover" alt="" hidden></div></div>
+      <div class="meta"><b id="title">—</b><span id="artist"></span></div>
+      <div class="eq" id="eq"></div>
+    </div>
+    <div class="stage" id="stage">
+      <canvas id="viz"></canvas>
+      <div class="vizsel"><button id="vPrev" aria-label="Visualización anterior">◀</button><span id="vName"></span><button id="vNext" aria-label="Visualización siguiente">▶</button></div>
+      <div class="lyr-over" id="lyrOver"><div class="p" id="loP"></div><div class="c" id="loC"></div><div class="n" id="loN"></div></div>
+      <div class="lyr-full" id="lyrFull"><div class="lyr-list" id="lyrList"></div></div>
+      <div class="lyr-plain" id="lyrPlain"></div>
+      <div class="lyr-none">Sin letra para esta canción</div>
+      <div class="msg" id="msg"><div><div class="note">♫</div><h2 id="msgTitle">Conectando…</h2><p id="msgText"></p></div></div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <div class="seekrow"><span id="tCur">0:00</span><div class="slider" id="seek"><div class="rail"><div class="fill"></div></div><div class="knob"></div></div><span id="tDur">0:00</span></div>
+    <div class="ctrls">
+      <div class="grp">
+        <button class="cap" id="btnShuf" aria-label="Aleatorio"><i class="led"></i><svg viewBox="0 0 24 24"><path d="M14.8 4H20v5.2l-1.9-1.9-3.6 3.6-1.4-1.4 3.6-3.6zM4 5.4 5.4 4 20 18.6 18.6 20zM20 14.8V20h-5.2l1.9-1.9-2.9-2.9 1.4-1.4 2.9 2.9z"/></svg></button>
+        <button class="cap" id="btnRep" aria-label="Repetir"><i class="led"></i><svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z"/></svg><b id="repOne" style="font-size:12px;display:none">1</b></button>
+        <button class="cap" id="btnLyr" aria-label="Modo de letra"><i class="led"></i><span id="lyrLabel">Letra: apagada</span></button>
+      </div>
+      <div class="grp center">
+        <button class="cap big" id="btnPrev" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zm3 7 10-7v14z"/></svg></button>
+        <button class="play" id="btnPlay" aria-label="Reproducir o pausar"><svg viewBox="0 0 24 24" id="icoPlay"><path d="M7 4v16l14-8z"/></svg></button>
+        <button class="cap big" id="btnNext" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM5 5l10 7-10 7z"/></svg></button>
+      </div>
+      <div class="grp right">
+        <div class="vol">
+          <button class="cap ico" id="volDown" aria-label="Bajar volumen">−</button>
+          <div class="slider" id="vol"><div class="rail"><div class="fill"></div></div><div class="knob"></div></div>
+          <button class="cap ico" id="volUp" aria-label="Subir volumen">+</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="drawer" id="drawer">
+  <header><b>Cola<small id="qCount"></small></b><button class="cap ico" id="qClose" aria-label="Cerrar">✕</button></header>
+  <div class="qlist" id="qList"></div>
+</div>
+
+<div class="sheet" id="cfg">
+  <h3>Retraso del audio Bluetooth</h3>
+  <p>El sonido por Bluetooth llega tarde a las bocinas. Ajusta hasta que la visualización y la letra coincidan con lo que escuchas.</p>
+  <div class="row">
+    <button class="cap ico" id="dlyDown" aria-label="Menos retraso">−</button>
+    <div class="slider" id="dly"><div class="rail"><div class="fill"></div></div><div class="knob"></div></div>
+    <button class="cap ico" id="dlyUp" aria-label="Más retraso">+</button>
+    <div class="val" id="dlyVal">200 ms</div>
+  </div>
+  <div class="end"><button class="cap" id="dlyReset">Por defecto (200 ms)</button><button class="cap" id="cfgClose">Listo</button></div>
+</div>
+
+<script type="module" src="musica.js"></script>
+</body>
+</html>

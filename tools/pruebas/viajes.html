@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prueba: viajes y mantenimiento</title>
+<link rel="stylesheet" href="../../css/app.css">
+<style>
+  body { padding:16px; display:block; }
+  .wrap { display:grid; grid-template-columns:minmax(300px, 420px) 1fr; gap:16px; max-width:1300px; margin:0 auto; }
+  @media (max-width:800px) { .wrap { grid-template-columns:1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  h2 { font-size:14px; margin:14px 0 8px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+  label { display:flex; align-items:center; gap:8px; margin:6px 0; }
+  input[type=range] { flex:1; }
+  .btns { display:flex; flex-wrap:wrap; gap:8px; }
+  .btns .btn { min-height:44px; }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:3px 12px; font-size:13px; }
+  .kv b { font-variant-numeric:tabular-nums; }
+  #log { font:12px/1.4 ui-monospace, Consolas, monospace; background:#05070a; border:1px solid var(--border); border-radius:8px; padding:8px; height:180px; overflow:auto; white-space:pre-wrap; color:#9fb0c4; }
+  select { background:var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:6px 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <div class="panel">
+      <h1>Prueba de js/trips.js</h1>
+      <p class="muted small">OBD y GPS simulados, con reloj propio para acelerar el tiempo. Usa su propio almacén
+        (<code>prueba.*</code> en localStorage, IndexedDB <code>clio-viajes-prueba</code>): no toca los datos reales.
+        Si se abre desde el hub, también publica al estéreo como "motor".</p>
+
+      <h2>OBD</h2>
+      <label><input type="checkbox" id="obdOn" checked> OBD conectado</label>
+      <label>Velocidad <input type="range" id="spd" min="0" max="160" value="0"> <b id="spdV">0</b>&nbsp;km/h</label>
+      <div class="btns"><button class="btn" id="btnTripReset">Reiniciar trip de la app</button></div>
+
+      <h2>GPS</h2>
+      <label><input type="checkbox" id="gpsOn" checked> GPS con señal</label>
+      <label><input type="checkbox" id="gpsBad"> Posiciones malas (acc 120 m y saltos)</label>
+
+      <h2>Simulación</h2>
+      <label>Velocidad del reloj
+        <select id="factor"><option value="1">×1 (tiempo real)</option><option value="10" selected>×10</option><option value="60">×60</option></select></label>
+      <div class="btns">
+        <button class="btn primary" id="btnDrive">▶ Simular viaje (8 min)</button>
+        <button class="btn" id="btnStop">■ Detener auto</button>
+        <button class="btn" id="btnLost">Perder OBD y GPS</button>
+        <button class="btn" id="btnSkip">+5 min</button>
+      </div>
+
+      <h2>Estado</h2>
+      <div class="kv" id="kv"></div>
+      <h2>Mensajes publicados</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+  <div class="panel" id="mount"></div>
+</div>
+
+<script type="module">
+import { StereoLink } from '../../js/link.js';
+import { Trips } from '../../js/trips.js';
+
+const $ = s => document.querySelector(s);
+let simTime = Date.now();
+const obd = { on: true, speed: 0, trip: { km: 0, ms: 0, fuel: 0 } };
+
+// ---------- GPS simulado (misma interfaz que js/gps.js: last, onFix) ----------
+const gps = {
+  last: null, fns: [], lat: 19.4326, lon: -99.1332, hdg: 30,
+  onFix(fn) { this.fns.push(fn); },
+  step(kmh) {
+    if (!$('#gpsOn').checked) return;
+    const m = kmh / 3.6;
+    this.hdg += (Math.sin(simTime / 40000) * 6) + (kmh > 0 ? 0.4 : 0);
+    const r = Math.PI / 180;
+    this.lat += (m * Math.cos(this.hdg * r)) / 111195;
+    this.lon += (m * Math.sin(this.hdg * r)) / (111195 * Math.cos(this.lat * r));
+    let f = { lat: this.lat, lon: this.lon, acc: 6 + Math.random() * 4, hdg: ((this.hdg % 360) + 360) % 360, spd: m, ts: simTime };
+    if ($('#gpsBad').checked) f = Math.random() < 0.5 ? { ...f, acc: 120 } : { ...f, lat: f.lat + 0.03 };
+    this.last = f;
+    for (const fn of this.fns) fn(f);
+  },
+};
+
+// ---------- enlace con el estéreo (opcional) ----------
+let link = null;
+const log = [];
+function addLog(m) {
+  const s = m.t === 'odo' ? `odo km=${m.km}` : m.t === 'trips' ? `trips (${m.items.length})${m.items[0]?.live ? ' · en curso' : ''}` : m.t === 'trip' ? `trip id=${m.id} pts=${m.pts.length}` : JSON.stringify(m);
+  log.unshift(`${new Date(simTime).toLocaleTimeString('es-MX')}  ${s}`);
+  if (log.length > 80) log.length = 80;
+  $('#log').textContent = log.join('\n');
+}
+
+const ctx = {
+  publish: m => { addLog(m); link?.publish(m); },
+  publishBinary: () => {},
+  obd: () => obd,
+  toast: (msg, err) => addLog({ t: err ? 'error' : 'aviso', msg }),
+  modules: { gps },
+};
+const trips = new Trips(ctx, { now: () => simTime, prefix: 'prueba.', dbName: 'clio-viajes-prueba', autoTick: false });
+ctx.modules.trips = trips;
+window.trips = trips; window.obd = obd; window.gps = gps; window.sim = { get time() { return simTime; } };
+trips.mount($('#mount'));
+
+const sl = new StereoLink({ onCommand: m => { if (/^(trips|maint)\./.test(m.a)) trips.command(m); } });
+sl.onScreen = () => trips.resend();
+sl.start().then(ok => { if (ok) { link = sl; addLog({ t: 'aviso', msg: 'conectado al hub como motor' }); } });
+
+// ---------- manejo automático ----------
+let drive = null;  // {t0}
+function driveSpeed(sec) {
+  // 8 min: arranca, avenida, alto de 20 s cada 100 s, y se detiene
+  if (sec > 480) return 0;
+  const cyc = sec % 100;
+  if (cyc > 80) return Math.max(0, 50 - (cyc - 80) * 8);
+  const base = sec > 200 && sec < 320 ? 95 : 55;
+  return Math.min(base, cyc * 6) + Math.sin(sec / 7) * 6 * (cyc > 10 ? 1 : 0);
+}
+let lost = false;
+
+// ---------- bucle (un segundo simulado por vuelta) ----------
+function simStep() {
+  simTime += 1000;
+  if (drive) {
+    const v = Math.max(0, Math.round(driveSpeed((simTime - drive.t0) / 1000)));
+    $('#spd').value = v;
+    if ((simTime - drive.t0) / 1000 > 480) drive = null;
+  }
+  const v = Number($('#spd').value);
+  $('#spdV').textContent = v;
+  obd.on = $('#obdOn').checked && !lost;
+  obd.speed = obd.on ? v : undefined;
+  if (obd.on) {
+    obd.trip.km += v / 3600;
+    obd.trip.fuel += (0.7 + v * 0.055) / 3600;
+    obd.trip.ms += 1000;
+  }
+  if (!lost) gps.step(v);
+  trips.tick();
+  const t = trips.trip;
+  $('#kv').innerHTML = `
+    <span>Hora simulada</span><b>${new Date(simTime).toLocaleString('es-MX')}</b>
+    <span>OBD trip.km</span><b>${obd.trip.km.toFixed(3)}</b>
+    <span>Odómetro</span><b>${trips.odo.toFixed(2)} km</b>
+    <span>Viaje en curso</span><b>${t ? `${t.km.toFixed(2)} km · ${t.pts.length} pts · máx ${Math.round(t.maxSpeed)}` : '—'}</b>
+    <span>Detenido desde</span><b>${t && t.stoppedSince ? Math.round((simTime - t.stoppedSince) / 1000) + ' s' : '—'}</b>
+    <span>Viajes guardados</span><b>${trips.recent.length}</b>`;
+}
+let timer = null;
+function restart() { clearInterval(timer); timer = setInterval(simStep, 1000 / Number($('#factor').value)); }
+$('#factor').onchange = restart;
+restart();
+
+$('#btnDrive').onclick = () => { lost = false; drive = { t0: simTime }; };
+$('#btnStop').onclick = () => { drive = null; $('#spd').value = 0; };
+$('#btnLost').onclick = () => { lost = !lost; $('#btnLost').textContent = lost ? 'Recuperar OBD y GPS' : 'Perder OBD y GPS'; };
+$('#btnSkip').onclick = () => { for (let i = 0; i < 300; i++) simStep(); };
+$('#btnTripReset').onclick = () => { obd.trip = { km: 0, ms: 0, fuel: 0 }; };
+$('#spd').oninput = () => { drive = null; $('#spdV').textContent = $('#spd').value; };
+</script>
+</body>
+</html>

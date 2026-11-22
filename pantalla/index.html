@@ -8,21 +8,30 @@
   :root { --bg:#07090d; --panel:#121823; --line:#222c3c; --text:#eef2f7; --dim:#8692a6; --acc:#3fa9ff; --ok:#3ecf7a; --warn:#ffb340; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
   html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font-family:system-ui, Roboto, sans-serif; overflow:hidden; }
-  body { display:flex; flex-direction:column; padding:20px 24px; }
+  body { display:flex; flex-direction:column; padding:18px 22px; background:radial-gradient(ellipse at 20% 0%, #101827 0%, var(--bg) 60%); }
   .top { display:flex; justify-content:space-between; align-items:flex-start; }
-  #clock { font-size:96px; font-weight:200; line-height:1; letter-spacing:-2px; }
-  #date { color:var(--dim); font-size:22px; margin-top:6px; }
+  #clock { font-size:78px; font-weight:200; line-height:1; letter-spacing:-2px; }
+  #date { color:var(--dim); font-size:20px; margin-top:4px; }
+  .status { display:flex; flex-direction:column; align-items:flex-end; }
   #link { display:flex; align-items:center; background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:8px 16px; font-size:16px; color:var(--dim); }
   #link i { margin-right:8px; width:10px; height:10px; border-radius:50%; background:var(--warn); display:inline-block; }
   #link.ok i { background:var(--ok); }
-  .grid { flex:1; display:grid; grid-template-columns:repeat(3, 1fr); grid-auto-rows:1fr; gap:14px; margin-top:22px; }
-  .tile { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px; display:flex; flex-direction:column; justify-content:space-between; color:var(--text); text-decoration:none; position:relative; overflow:hidden; }
+  #now { display:flex; align-items:center; margin-top:10px; max-width:460px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:6px 12px 6px 6px; text-decoration:none; color:var(--text); }
+  #now img { width:44px; height:44px; border-radius:8px; object-fit:cover; background:#1b2333; margin-right:10px; flex:0 0 auto; }
+  #now span { display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  #now small { color:var(--dim); }
+  .grid { flex:1; display:grid; grid-template-columns:repeat(3, 1fr); grid-template-rows:repeat(3, 1fr); gap:12px; margin-top:16px; min-height:0; }
+  .tile { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:12px 16px; display:flex; align-items:center; color:var(--text); text-decoration:none; overflow:hidden; }
   .tile:active { transform:scale(.98); border-color:var(--acc); }
-  .tile b { font-size:26px; font-weight:600; }
-  .tile small { color:var(--dim); font-size:15px; }
-  .tile .ico { font-size:40px; line-height:1; }
-  .tile.soon { opacity:.45; }
-  .tile.soon::after { content:'Próximamente'; position:absolute; top:14px; right:14px; font-size:12px; color:var(--dim); border:1px solid var(--line); border-radius:6px; padding:2px 6px; }
+  .tile .ico { font-size:34px; line-height:1; width:56px; height:56px; flex:0 0 auto; border-radius:14px; display:flex; align-items:center; justify-content:center; margin-right:14px; background:#1a2232; }
+  .tile b { font-size:22px; font-weight:600; display:block; }
+  .tile small { color:var(--dim); font-size:14px; }
+  .c1 .ico { background:linear-gradient(135deg,#ff2d55,#8a1530); }
+  .c2 .ico { background:linear-gradient(135deg,#2f7bff,#173c8a); }
+  .c3 .ico { background:linear-gradient(135deg,#19c37d,#0b5e3c); }
+  .c4 .ico { background:linear-gradient(135deg,#8b5cf6,#2f7bff); }
+  .c5 .ico { background:linear-gradient(135deg,#ff9f1a,#9a4b00); }
+  .c6 .ico { background:linear-gradient(135deg,#14b8a6,#0e5a63); }
   .hidden { display:none !important; }
 </style>
 </head>
@@ -32,21 +41,28 @@
       <div id="clock">--:--</div>
       <div id="date"></div>
     </div>
-    <div id="link"><i></i><span>Conectando…</span></div>
+    <div class="status">
+      <div id="link"><i></i><span>Conectando…</span></div>
+      <a id="now" class="hidden" href="musica.html"><img alt=""><div><span id="nowTitle"></span><small id="nowArtist"></small></div></a>
+    </div>
   </div>
 
   <div class="grid">
-    <a class="tile" href="cluster.html"><span class="ico">⏱</span><div><b>Cluster</b><br><small>RPM, velocidad, temperatura</small></div></a>
-    <div class="tile soon"><span class="ico">♫</span><div><b>Música</b><br><small>Visualizaciones y letras</small></div></div>
-    <div class="tile soon"><span class="ico">➤</span><div><b>Mapa</b><br><small>Navegación sin datos</small></div></div>
-    <a class="tile" href="/tools/linktest/"><span class="ico">⇄</span><div><b>Prueba de enlace</b><br><small>WiFi, pantalla, teclas</small></div></a>
-    <div class="tile shell" id="apps"><span class="ico">▦</span><div><b>Apps del estéreo</b><br><small>Radio, Bluetooth, cámara…</small></div></div>
-    <div class="tile shell" id="settings"><span class="ico">⚙</span><div><b>Ajustes</b><br><small>Ajustes de Android</small></div></div>
+    <a class="tile c1" href="cluster.html"><span class="ico">⏱</span><div><b>Cluster</b><small>RPM, velocidad, temperatura</small></div></a>
+    <a class="tile c2" href="musica.html"><span class="ico">♫</span><div><b>Música</b><small>Visualizaciones y letras</small></div></a>
+    <a class="tile c3" href="mapa.html"><span class="ico">➤</span><div><b>Mapa</b><small>Navegación sin datos</small></div></a>
+    <a class="tile c4" href="dividida.html"><span class="ico">◧</span><div><b>Música + Mapa</b><small>Las dos a la vez</small></div></a>
+    <a class="tile c5" href="tiempos.html"><span class="ico">🏁</span><div><b>Tiempos</b><small>0–100, 400 m</small></div></a>
+    <a class="tile c6" href="viajes.html"><span class="ico">🔧</span><div><b>Viajes</b><small>Odómetro y mantenimiento</small></div></a>
+    <div class="tile shell" id="apps"><span class="ico">▦</span><div><b>Apps del estéreo</b><small>Radio, Bluetooth, cámara…</small></div></div>
+    <div class="tile shell" id="settings"><span class="ico">⚙</span><div><b>Ajustes</b><small>Ajustes de Android</small></div></div>
+    <a class="tile" href="/tools/linktest/"><span class="ico">⇄</span><div><b>Prueba de enlace</b><small>WiFi, pantalla, teclas</small></div></a>
   </div>
 
 <script>
 (function () {
   'use strict';
+  // JavaScript conservador: esta portada debe abrir aunque el WebView sea viejo.
   var shell = window.ClioShell || null;
   // Fuera de la app (en un navegador normal) no hay acceso a las apps del estéreo
   if (!shell) Array.prototype.forEach.call(document.querySelectorAll('.shell'), function (el) { el.classList.add('hidden'); });
@@ -65,8 +81,19 @@
   }
   tick(); setInterval(tick, 1000);
 
-  // Estado del enlace con el teléfono (relay del hub)
+  // Oculta los accesos a páginas que todavía no existen en esta versión
+  Array.prototype.forEach.call(document.querySelectorAll('a.tile'), function (el) {
+    var href = el.getAttribute('href');
+    if (!href || href.charAt(0) === '/') return;
+    var x = new XMLHttpRequest();
+    x.open('HEAD', href);
+    x.onload = function () { if (x.status >= 400) el.classList.add('hidden'); };
+    x.send();
+  });
+
+  // Estado del enlace con el teléfono y canción actual
   var link = document.getElementById('link'), label = link.querySelector('span');
+  var now = document.getElementById('now');
   function setLink(ok, text) { link.className = ok ? 'ok' : ''; label.textContent = text; }
   function connect() {
     var ws;
@@ -78,10 +105,17 @@
       var m; try { m = JSON.parse(e.data); } catch (err) { return; }
       if (m.t === 'hub') {
         var motor = m.clients.some(function (r) { return r.indexOf('motor') === 0; });
-        setLink(true, motor ? 'Teléfono conectado · datos del auto' : 'Teléfono conectado');
+        setLink(true, motor ? 'Teléfono conectado · datos del auto' : 'Teléfono conectado (abre la app)');
+        if (!motor) now.classList.add('hidden');
+      } else if (m.t === 'track') {
+        document.getElementById('nowTitle').textContent = m.title || 'Sin título';
+        document.getElementById('nowArtist').textContent = m.artist || '';
+        var img = now.querySelector('img');
+        if (m.cover) img.src = m.cover; else img.removeAttribute('src');
+        now.classList.remove('hidden');
       }
     };
-    ws.onclose = function () { setLink(false, 'Sin conexión'); setTimeout(connect, 3000); };
+    ws.onclose = function () { setLink(false, 'Sin conexión'); now.classList.add('hidden'); setTimeout(connect, 3000); };
   }
   connect();
 })();

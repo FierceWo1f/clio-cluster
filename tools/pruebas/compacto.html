@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Prueba del mini reproductor</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin:0; height:100%; background:#07090d; color:#eef2f7; font-family:system-ui, sans-serif; overflow:hidden; }
+  body { display:flex; padding:20px; }
+  #pc { width:384px; height:560px; flex:0 0 auto; }
+  #lado { flex:1; margin-left:20px; border:1px dashed #2a3240; border-radius:16px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#8692a6; }
+  #lado button { margin-top:14px; height:48px; padding:0 18px; border-radius:12px; border:1px solid #2a3240; background:#121823; color:#eef2f7; font-size:16px; }
+</style>
+</head>
+<body>
+  <div id="pc"></div>
+  <div id="lado">
+    <div>(aquí iría el mapa de la vista dividida)</div>
+    <button id="remontar">Destruir y volver a montar</button>
+  </div>
+<script type="module">
+  // Página de prueba: monta el mini reproductor en un hueco de 384×560 como lo haría pantalla/dividida.html.
+  import { Hub } from '/pantalla/common.js';
+  import { mountCompactPlayer } from '/pantalla/player-compact.js';
+  const hub = new Hub('pantalla-prueba-compacto');
+  let pc = mountCompactPlayer(document.querySelector('#pc'), hub, { fpsCap: 20 });
+  document.querySelector('#remontar').onclick = () => {
+    pc.destroy();
+    pc = mountCompactPlayer(document.querySelector('#pc'), hub, { fpsCap: 20 });
+  };
+  window.prueba = { hub, get pc() { return pc; } };
+</script>
+</body>
+</html>
