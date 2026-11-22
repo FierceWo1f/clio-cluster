@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prueba de enlace</title>
+<style>
+  :root { --bg:#0b0e13; --panel:#141922; --line:#252d3a; --text:#e6ebf2; --dim:#8b96a8; --acc:#3fa9ff; --ok:#3ecf7a; --warn:#ffb340; --bad:#ff5a5a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 system-ui, sans-serif; }
+  header { display:flex; gap:6px; padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap; align-items:center; }
+  header b { margin-right:8px; }
+  .tab { background:none; border:1px solid var(--line); color:var(--dim); padding:8px 14px; border-radius:6px; font-size:15px; }
+  .tab.on { color:var(--text); border-color:var(--acc); background:#1a2433; }
+  main { padding:12px 16px; max-width:1100px; }
+  section { display:none; } section.on { display:block; }
+  button.act { background:var(--acc); color:#001326; border:0; padding:10px 16px; border-radius:6px; font-size:15px; font-weight:600; margin:4px 4px 4px 0; }
+  button.act.sec { background:#2a3445; color:var(--text); }
+  button:disabled { opacity:.4; }
+  input, select { background:#0f141c; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; font-size:15px; }
+  table { border-collapse:collapse; width:100%; }
+  td { padding:5px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  td:first-child { color:var(--dim); width:42%; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px; margin:10px 0; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+  .stat small { color:var(--dim); display:block; } .stat span { font-size:22px; font-weight:600; }
+  #bench { width:100%; max-width:1024px; height:auto; background:#000; display:block; border:1px solid var(--line); }
+  #fftView { width:100%; height:80px; background:#000; display:block; margin-top:8px; }
+  pre, textarea { background:#0f141c; border:1px solid var(--line); border-radius:6px; padding:8px; color:var(--text); font:12px/1.35 monospace; width:100%; }
+  pre { max-height:220px; overflow:auto; white-space:pre-wrap; }
+  textarea { height:220px; }
+  .note { color:var(--dim); font-size:14px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:6px 0; }
+</style>
+</head>
+<body>
+<header>
+  <b>Prueba de enlace</b>
+  <button class="tab on" data-tab="equipo">Equipo</button>
+  <button class="tab" data-tab="pantalla">Pantalla</button>
+  <button class="tab" data-tab="wifi">WiFi</button>
+  <button class="tab" data-tab="ble">Bluetooth</button>
+  <button class="tab" data-tab="teclas">Teclas</button>
+  <button class="tab" data-tab="reporte">Reporte</button>
+</header>
+<main>
+
+<section id="equipo" class="on">
+  <p class="note">Qué soporta el navegador de este dispositivo. Ábrela en el estéreo y en el teléfono.</p>
+  <table id="equipoTbl"></table>
+</section>
+
+<section id="pantalla">
+  <p class="note">Dibuja escenas como las de la interfaz final a 1024×600 y mide los cuadros por segundo. La meta es ≥ 25 fps.</p>
+  <div class="row">
+    <button class="act" data-scene="mapa">Mapa</button>
+    <button class="act" data-scene="dividida">Música + Mapa</button>
+    <button class="act" data-scene="visual">Visualización</button>
+    <button class="act sec" id="benchAll">Correr las tres</button>
+  </div>
+  <canvas id="bench" width="1024" height="600"></canvas>
+  <pre id="benchOut">Sin resultados.</pre>
+</section>
+
+<section id="wifi">
+  <p class="note">El estéreo abre esta página desde el hub (<code>http://localhost:8080/tools/linktest/</code>) y elige <b>Receptor</b>.
+  El teléfono, conectado a la misma red WiFi, la abre con la IP del estéreo y elige <b>Emisor</b>.</p>
+  <div class="row">
+    <label>Hub <input id="hubUrl" size="32"></label>
+    <label>Frecuencia <select id="rate"><option>10</option><option selected>30</option><option>60</option></select> Hz</label>
+  </div>
+  <div class="row">
+    <button class="act" id="wsSend">Emisor (teléfono)</button>
+    <button class="act" id="wsRecv">Receptor (estéreo)</button>
+    <button class="act sec" id="wsStop" disabled>Detener</button>
+  </div>
+  <div class="stats" id="wsStats"></div>
+  <canvas id="fftView" width="640" height="80"></canvas>
+  <pre id="wsLog"></pre>
+</section>
+
+<section id="ble">
+  <p class="note">El estéreo se conecta como cliente al teléfono, que hace de servidor <b>Nordic UART (NUS)</b>.
+  Prueba 1: en el teléfono, <b>nRF Connect</b> → menú → Configure GATT server → agrega "Nordic UART Service" → pestaña Advertiser → anunciar.
+  Luego, en el estéreo, toca Conectar. Desde nRF Connect manda un valor a la característica TX (notify) y debe aparecer aquí.</p>
+  <div class="row">
+    <button class="act" id="bleConn">Conectar</button>
+    <button class="act sec" id="blePing" disabled>Enviar "hola" al teléfono</button>
+    <button class="act sec" id="bleStop" disabled>Desconectar</button>
+  </div>
+  <div class="stats" id="bleStats"></div>
+  <pre id="bleLog"></pre>
+</section>
+
+<section id="teclas">
+  <p class="note">Presiona los botones del volante y del estéreo (siguiente, volumen, etc.) con esta página abierta. Si aparecen aquí, la interfaz web podrá usarlos.</p>
+  <pre id="keyLog">Esperando teclas…</pre>
+</section>
+
+<section id="reporte">
+  <p class="note">Copia este texto y pégalo en el chat para decidir el enlace.</p>
+  <div class="row">
+    <button class="act" id="copyRep">Copiar reporte</button>
+    <button class="act sec" id="refreshRep">Actualizar</button>
+  </div>
+  <textarea id="repText" readonly></textarea>
+</section>
+
+</main>
+<script src="linktest.js"></script>
+</body>
+</html>

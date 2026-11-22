@@ -83,4 +83,6 @@ sw.js, manifest       instalación como app (PWA) y modo sin conexión
 emulador/emulador.py  lanza ELM327-emulator (con corrección para Windows)
 emulador/puente.py    puente WebSocket <-> TCP (emulador o ELM327 WiFi)
 emulador/.venv        Python aislado con el emulador instalado
+hub/hub.py            hub web + relay WebSocket (teléfono ↔ estéreo), solo Python estándar
+tools/linktest/       prueba de enlace WiFi / Bluetooth (Fase 0), ver tools/linktest/LEEME.md
 ```
