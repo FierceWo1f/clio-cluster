@@ -469,6 +469,7 @@ def main():
     g.add_argument("--bbox", help="área: sur,oeste,norte,este en grados (ej. 20.55,-100.45,20.65,-100.33)")
     g.add_argument("--lugar", help='ciudad a buscar, ej. "Querétaro, Querétaro"')
     g.add_argument("--region", help="región completa por código ISO 3166-2, ej. MX-HID (Hidalgo), MX-QUE, MX-CMX")
+    ap.add_argument("--pbf", help="leer de un extracto .osm.pbf (p. ej. mexico-latest.osm.pbf de Geofabrik) en vez de Overpass")
     ap.add_argument("--radio", type=float, default=8, help="radio en km alrededor de --lugar (por defecto 8)")
     ap.add_argument("--salida", default=os.path.join(ROOT, "datos", "mapa"), help="carpeta de salida (por defecto datos/mapa)")
     ap.add_argument("--sin-lugares", action="store_true", help="no descargar negocios ni lugares")
@@ -477,7 +478,28 @@ def main():
 
     print("Mapas para Clio — datos © colaboradores de OpenStreetMap (ODbL)")
     elementos = None
-    if a.region:
+    if a.pbf:
+        from pbf import leer_region
+        t0 = time.time()
+        codigo = a.region.upper() if a.region else None
+        if codigo:
+            cache = os.path.join(ROOT, "datos", f".cache-{codigo}")
+            os.makedirs(cache, exist_ok=True)
+            ruta_lim = os.path.join(cache, "limites.json")
+            if os.path.isfile(ruta_lim):
+                with open(ruta_lim, encoding="utf-8") as f:
+                    b = json.load(f)
+            else:
+                b = limites_region(codigo)
+                with open(ruta_lim, "w", encoding="utf-8") as f:
+                    json.dump(b, f)
+        elif a.bbox:
+            b = [float(x) for x in a.bbox.split(",")]
+        else:
+            b = bbox_de_radio(*geocodificar(a.lugar), a.radio)
+        elementos = leer_region(a.pbf, b, codigo, CLASES, not a.sin_lugares)
+        b = bbox_de_elementos(elementos)
+    elif a.region:
         t0 = time.time()
         print(f"Descargando la región {a.region} por cuadros (puede tardar; si se corta, vuelve a correrlo y continúa)…")
         elementos = descargar_region(a.region.upper(), not a.sin_lugares,

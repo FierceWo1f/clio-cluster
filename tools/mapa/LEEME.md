@@ -44,10 +44,21 @@ Opciones:
 | `--lugar "Ciudad, Estado"` | busca el centro en Nominatim (1 sola petición) |
 | `--radio KM` | radio alrededor de `--lugar` (por defecto 8) |
 | `--bbox S,W,N,E` | rectángulo exacto, en lugar de `--lugar` |
+| `--pbf archivo.osm.pbf` | lee de un extracto descargado (por ejemplo `mexico-latest.osm.pbf` de download.geofabrik.de, ~650 MB) en lugar de Overpass. Con `--region` recorta por la frontera real del estado. Un estado completo sale en ~1.5 min en una PC |
 | `--region MX-HID` | un estado completo (código ISO 3166-2). Se baja por cuadros de ~33 km que se guardan en `datos/.cache-<código>/`: si se corta, vuelve a correr el comando y continúa. Tarda horas; en la PC es más cómodo |
 | `--salida carpeta` | dónde escribir (por defecto `datos/mapa/`) |
 | `--sin-lugares` | solo calles, sin negocios ni lugares para el buscador |
 | `--si` | no preguntar aunque el área sea grande |
+
+Para generar un paquete de estado completo (lo que se publica en *releases*), en la PC:
+
+```sh
+curl -L -o datos/osm/mexico-latest.osm.pbf https://download.geofabrik.de/north-america/mexico-latest.osm.pbf
+python tools/mapa/descargar.py --region MX-HID --pbf datos/osm/mexico-latest.osm.pbf --si
+```
+
+Hidalgo completo: 166 mil vías, 1.4 millones de nodos, 75 MB (27 MB en zip). En una PC el grafo carga en 0.5 s y
+Tula → Huejutla (294 km) se calcula en 0.3 s; en el teléfono, unas 5 a 10 veces más.
 
 Cada descarga **reemplaza** la anterior (una sola área a la vez). Si viajas a otra ciudad, descárgala antes de salir.
 
