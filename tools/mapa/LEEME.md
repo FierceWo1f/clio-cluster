@@ -6,7 +6,19 @@ del buscador se descargan una vez, **en casa con WiFi**, y el hub los sirve desd
 Los datos vienen de OpenStreetMap (© colaboradores de OpenStreetMap, licencia ODbL). El formato de los archivos está
 en `docs/PROTOCOLO.md`, sección "Datos de mapa".
 
-## En Termux (teléfono)
+## Lo más fácil: instalar un mapa ya preparado
+
+Un mapa de todo el estado tarda horas en bajarse de OpenStreetMap, así que hay paquetes listos en los
+*releases* del repositorio. En Termux:
+
+```sh
+cd ~/clio-cluster && git pull
+python tools/mapa/instalar.py hidalgo        # baja e instala el mapa de Hidalgo
+```
+
+También acepta una URL o un `.zip` que ya tengas en el teléfono. El mapa anterior queda en `datos/mapa.anterior`.
+
+## Descargar tú mismo (Termux o PC)
 
 ```sh
 pkg install python          # una sola vez (no necesita nada más: solo usa la librería estándar)
@@ -32,6 +44,7 @@ Opciones:
 | `--lugar "Ciudad, Estado"` | busca el centro en Nominatim (1 sola petición) |
 | `--radio KM` | radio alrededor de `--lugar` (por defecto 8) |
 | `--bbox S,W,N,E` | rectángulo exacto, en lugar de `--lugar` |
+| `--region MX-HID` | un estado completo (código ISO 3166-2). Se baja por cuadros de ~33 km que se guardan en `datos/.cache-<código>/`: si se corta, vuelve a correr el comando y continúa. Tarda horas; en la PC es más cómodo |
 | `--salida carpeta` | dónde escribir (por defecto `datos/mapa/`) |
 | `--sin-lugares` | solo calles, sin negocios ni lugares para el buscador |
 | `--si` | no preguntar aunque el área sea grande |

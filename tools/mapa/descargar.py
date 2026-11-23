@@ -12,6 +12,7 @@ Genera (formato en docs/PROTOCOLO.md, sección "Datos de mapa"):
 Ejemplos:
   python tools/mapa/descargar.py --lugar "Querétaro, Querétaro" --radio 8
   python tools/mapa/descargar.py --bbox 20.55,-100.45,20.65,-100.33
+  python tools/mapa/descargar.py --region MX-HID      (un estado completo, por partes; mejor en la PC)
 
 Los datos vienen de © colaboradores de OpenStreetMap (licencia ODbL).
 """
@@ -75,10 +76,10 @@ def http(url, data=None, etiqueta="", timeout=300):
         return b"".join(partes)
 
 
-def overpass(consulta, etiqueta, espera_max=300):
+def overpass(consulta, etiqueta, espera_max=300, intentos=3):
     datos = urllib.parse.urlencode({"data": consulta}).encode()
     ultimo_error = None
-    for intento in range(3):
+    for intento in range(intentos):
         for url in OVERPASS:
             try:
                 print(f"  Pidiendo a {urllib.parse.urlsplit(url).netloc} …")
@@ -187,6 +188,133 @@ def consulta(b, con_lugares):
         q += (f'(nwr["amenity"]["name"]{box}; nwr["shop"]["name"]{box}; nwr["tourism"]["name"]{box};);\n'
               f'out tags center;\n')
     return q
+
+
+# Una región grande (un estado) se descarga en cuadros de CELDA grados: consultas chicas que los
+# servidores aceptan aunque estén ocupados. Cada cuadro se guarda en disco: si algo falla, al volver
+# a correr el comando continúa donde se quedó.
+CELDA = 0.3
+
+
+def limites_region(codigo):
+    q = f'[out:json][timeout:120];rel["ISO3166-2"="{codigo}"];out bb;'
+    res = overpass(q, "límites", espera_max=180)
+    rels = [e for e in res.get("elements", []) if "bounds" in e]
+    if not rels:
+        raise SystemExit(f"No se encontró la región {codigo}. Usa un código ISO 3166-2, por ejemplo MX-HID.")
+    bd = rels[0]["bounds"]
+    return [bd["minlat"], bd["minlon"], bd["maxlat"], bd["maxlon"]]
+
+
+def consulta_celda(codigo, celda, con_lugares):
+    s, w, n, e = celda
+    box = f"({s:.5f},{w:.5f},{n:.5f},{e:.5f})"
+    vias = "|".join(CLASES)
+    q = (f'[out:json][timeout:600][maxsize:1073741824];\n'
+         f'area["ISO3166-2"="{codigo}"]->.a;\n'
+         f'way["highway"~"^({vias})(_link)?$"]["area"!="yes"](area.a){box}->.todas;\n'
+         f'way.todas["highway"="service"]["service"~"^(driveway|emergency_access)$"]->.fuera1;\n'
+         f'way.todas["highway"="service"]["access"~"^(private|no)$"]->.fuera2;\n'
+         f'(.fuera1; .fuera2;)->.fuera;\n'
+         f'(.todas; - .fuera;)->.vias;\n'
+         f'.vias out body geom;\n')
+    if con_lugares:
+        q += (f'(nwr["amenity"]["name"](area.a){box}; nwr["shop"]["name"](area.a){box}; '
+              f'nwr["tourism"]["name"](area.a){box};);\n'
+              f'out tags center;\n')
+    return q
+
+
+def guardar_json(ruta, datos):
+    tmp = ruta + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(datos, f, separators=(",", ":"))
+    os.replace(tmp, ruta)
+
+
+def elementos_celda(codigo, celda, ruta, con_lugares, nombre, nivel=0):
+    """Elementos de un cuadro (del disco si ya está). Si el servidor no puede con el cuadro
+    (ciudades densas), lo parte en 4 más chicos, hasta dos veces."""
+    if os.path.isfile(ruta):
+        with open(ruta, encoding="utf-8") as f:
+            return json.load(f)
+    try:
+        res = overpass(consulta_celda(codigo, celda, con_lugares), "recibido", espera_max=660,
+                       intentos=3 if nivel == 2 else 1)
+        if res.get("remark") and "error" in res["remark"].lower():
+            raise SystemExit(res["remark"])
+        els = res.get("elements", [])
+        del res
+        time.sleep(2)  # cortesía con el servidor
+    except SystemExit as err:
+        if nivel >= 2:
+            raise SystemExit(f"No se pudo descargar el cuadro {nombre} ({err}). "
+                             "Vuelve a correr el comando más tarde; continúa donde se quedó.")
+        print(f"  El cuadro {nombre} es muy pesado para el servidor; se parte en 4.")
+        s, w, n, e = celda
+        ms, mw = (s + n) / 2, (w + e) / 2
+        partes = [[s, w, ms, mw], [s, mw, ms, e], [ms, w, n, mw], [ms, mw, n, e]]
+        base = ruta[:-5]
+        els, vistos = [], set()
+        for q, sub in enumerate(partes):
+            print(f"  parte {nombre}.{q + 1}…")
+            for el in elementos_celda(codigo, sub, f"{base}_{q}.json", con_lugares, f"{nombre}.{q + 1}", nivel + 1):
+                if (el["type"], el["id"]) not in vistos:
+                    vistos.add((el["type"], el["id"]))
+                    els.append(el)
+    guardar_json(ruta, els)
+    return els
+
+
+def descargar_region(codigo, con_lugares, cache_dir):
+    """Descarga una región completa (por ejemplo MX-HID) por cuadros y junta los resultados."""
+    os.makedirs(cache_dir, exist_ok=True)
+    ruta_lim = os.path.join(cache_dir, "limites.json")
+    if os.path.isfile(ruta_lim):
+        with open(ruta_lim, encoding="utf-8") as f:
+            lim = json.load(f)
+    else:
+        print("Buscando los límites de la región…")
+        lim = limites_region(codigo)
+        with open(ruta_lim, "w", encoding="utf-8") as f:
+            json.dump(lim, f)
+    s0, w0, n0, e0 = lim
+    filas = max(1, math.ceil((n0 - s0) / CELDA))
+    cols = max(1, math.ceil((e0 - w0) / CELDA))
+    total = filas * cols
+    print(f"Región {codigo}: {total} cuadros de ~{CELDA * 111:.0f} km (los ya descargados se reutilizan)")
+    vistos, elementos = set(), []
+    k = 0
+    for i in range(filas):
+        for j in range(cols):
+            k += 1
+            celda = [s0 + i * CELDA, w0 + j * CELDA, min(n0, s0 + (i + 1) * CELDA), min(e0, w0 + (j + 1) * CELDA)]
+            ruta = os.path.join(cache_dir, f"celda_{i}_{j}.json")
+            origen = "guardado" if os.path.isfile(ruta) else "descargado"
+            if origen == "descargado":
+                print(f"Cuadro {k}/{total}…")
+            els = elementos_celda(codigo, celda, ruta, con_lugares, f"{k}/{total}")
+            nuevos = 0
+            for el in els:
+                clave = (el["type"], el["id"])
+                if clave not in vistos:
+                    vistos.add(clave)
+                    elementos.append(el)
+                    nuevos += 1
+            print(f"  cuadro {k}/{total}: {nuevos:,} elementos ({origen})")
+    if not elementos:
+        raise SystemExit(f"No se encontró nada para la región {codigo}.")
+    return elementos
+
+
+def bbox_de_elementos(elementos):
+    s = w = 90.0 * 4
+    n = e = -s
+    for el in elementos:
+        for g in el.get("geometry", ()):
+            s, n = min(s, g["lat"]), max(n, g["lat"])
+            w, e = min(w, g["lon"]), max(e, g["lon"])
+    return [s, w, n, e]
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +468,7 @@ def main():
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--bbox", help="área: sur,oeste,norte,este en grados (ej. 20.55,-100.45,20.65,-100.33)")
     g.add_argument("--lugar", help='ciudad a buscar, ej. "Querétaro, Querétaro"')
+    g.add_argument("--region", help="región completa por código ISO 3166-2, ej. MX-HID (Hidalgo), MX-QUE, MX-CMX")
     ap.add_argument("--radio", type=float, default=8, help="radio en km alrededor de --lugar (por defecto 8)")
     ap.add_argument("--salida", default=os.path.join(ROOT, "datos", "mapa"), help="carpeta de salida (por defecto datos/mapa)")
     ap.add_argument("--sin-lugares", action="store_true", help="no descargar negocios ni lugares")
@@ -347,7 +476,14 @@ def main():
     a = ap.parse_args()
 
     print("Mapas para Clio — datos © colaboradores de OpenStreetMap (ODbL)")
-    if a.bbox:
+    elementos = None
+    if a.region:
+        t0 = time.time()
+        print(f"Descargando la región {a.region} por cuadros (puede tardar; si se corta, vuelve a correrlo y continúa)…")
+        elementos = descargar_region(a.region.upper(), not a.sin_lugares,
+                                     os.path.join(ROOT, "datos", f".cache-{a.region.upper()}"))
+        b = bbox_de_elementos(elementos)
+    elif a.bbox:
         try:
             b = [float(x) for x in a.bbox.split(",")]
             assert len(b) == 4 and b[0] < b[2] and b[1] < b[3]
@@ -360,7 +496,9 @@ def main():
 
     km2 = area_km2(b)
     print(f"Área: {b[0]:.4f},{b[1]:.4f},{b[2]:.4f},{b[3]:.4f}  (~{km2:,.0f} km²)")
-    if km2 > AREA_ENORME_KM2:
+    if elementos is not None:
+        pass  # región: ya se descargó por partes
+    elif km2 > AREA_ENORME_KM2:
         raise SystemExit("El área es enorme. Usa un radio menor o descarga por partes (una ciudad a la vez).")
     if km2 > AREA_GRANDE_KM2:
         print(f"Aviso: el área es grande. Puede tardar varios minutos y ocupar ~{km2 * 0.012:.0f} MB "
@@ -369,15 +507,16 @@ def main():
             if input("¿Continuar? [s/N] ").strip().lower() not in ("s", "si", "sí", "y", "yes"):
                 raise SystemExit("Cancelado.")
 
-    t0 = time.time()
-    print("Descargando calles" + ("" if a.sin_lugares else " y lugares") + " de Overpass (puede tardar)…")
-    # Overpass no manda nada hasta terminar la consulta: el tiempo de espera crece con el área
-    res = overpass(consulta(b, not a.sin_lugares), "recibido", espera_max=min(620, 120 + km2 * 0.5))
-    elementos = res.get("elements", [])
-    if res.get("remark"):
-        print("  Nota del servidor:", res["remark"])
-        if "error" in res["remark"].lower():
-            raise SystemExit("Overpass devolvió un error; prueba un área más chica o más tarde.")
+    if elementos is None:
+        t0 = time.time()
+        print("Descargando calles" + ("" if a.sin_lugares else " y lugares") + " de Overpass (puede tardar)…")
+        # Overpass no manda nada hasta terminar la consulta: el tiempo de espera crece con el área
+        res = overpass(consulta(b, not a.sin_lugares), "recibido", espera_max=min(620, 120 + km2 * 0.5))
+        elementos = res.get("elements", [])
+        if res.get("remark"):
+            print("  Nota del servidor:", res["remark"])
+            if "error" in res["remark"].lower():
+                raise SystemExit("Overpass devolvió un error; prueba un área más chica o más tarde.")
     print(f"  {len(elementos):,} elementos recibidos")
 
     print("Procesando…")
